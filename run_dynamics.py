@@ -18,6 +18,11 @@ def cumulative_average(l):
 
 	return(cumulative_average)
 
+# Initialize an instance of the price discrimination game dynamics game
+# pr_high,v_high,c_low,cost_evade are parameters for the price discrimination game
+# dynamics_name: list of names of classes for dynamics in each interaction of the game
+# extra_args: extra_args[i] is the list of extra arguments to be passed to initialize an 
+#	object of class dynamics_names[i]
 def create_price_disc_instance(pr_high,v_high,v_low,cost_evade, dynamics_names,extra_args):
 	price_disc_game = PriceDiscriminationGame(pr_high,v_high,v_low,cost_evade)
 	ind_nature = 0
@@ -35,6 +40,10 @@ def create_price_disc_instance(pr_high,v_high,v_low,cost_evade, dynamics_names,e
 
 	return(GameDynamics(price_disc_game,dynamics))
 
+# Takes rewards in each round of game run for each player
+# and optionally the dynamics object
+# Plots the cumulative average rewards over time
+# optionally indicates the equilibrium or without price discimination utilities
 def plot_cum_buyer_seller_utilities(r, d = None):
 	num_runs = len(r)
 	s = []
@@ -61,28 +70,29 @@ def plot_cum_buyer_seller_utilities(r, d = None):
 			hlines[0][j] = b_h
 	plot_matrix_subplots([b,s], hlines)
 
-
+# Creates a matrix of subplots. The (i,j)th subplot plots
+# a[i][j] against range(len(a[i][j]))
 def plot_matrix_subplots(a, hlines = None, vlines = None, row_labels=None, col_labels=None):
 	rows = len(a)
 	cols = len(a[0])
+	print(cols)
 	total_plots = rows * cols
 
 	# Calculate the optimal number of rows and columns
-	max_dim = math.ceil(math.sqrt(total_plots))
-	rows = min(max_dim, rows)
-	cols = min(max_dim, math.ceil(total_plots / rows))
+	# max_dim = math.ceil(math.sqrt(total_plots))
+	# rows = min(max_dim, rows)
+	# cols = min(max_dim, math.ceil(total_plots / rows))
 
 	# Calculate the figure size based on the number of rows and columns
-	fig_width = 4 * cols
-	fig_height = 4 * rows
+	fig_width = 3 * cols
+	fig_height = 3 * rows
 
 	fig, axes = plt.subplots(rows, cols, figsize=(fig_width, fig_height))
 
 	for i in range(rows):
 		for j in range(cols):
 			ax = axes[i][j]
-			if i < len(a) and j < len(a[i]):
-				ax.plot(range(len(a[i][j])), a[i][j])
+			ax.plot(range(len(a[i][j])), a[i][j])
 			if hlines is not None:
 				for hline in hlines[i][j]:
 					ax.axhline(hline, color='red', linestyle='--')
@@ -90,17 +100,6 @@ def plot_matrix_subplots(a, hlines = None, vlines = None, row_labels=None, col_l
 				ax.set_title(col_labels[j])
 			if j == 0 and (row_labels is not None):
 				ax.set_ylabel(row_labels[i])
-
-	        # if(i == 0 or j == 0):
-		       #  # Set row and column labels if provided
-		       #  if row_labels and col_labels:
-		       #      ax.set_title(f'({row_labels[i]}, {col_labels[j]})')
-		       #  elif row_labels:
-		       #      ax.set_title(f'({row_labels[i]}, {j})')
-		       #  elif col_labels:
-		       #      ax.set_title(f'({i}, {col_labels[j]})')
-		       #  else:
-		       #      ax.set_title(f'({i}, {j})')
 
 	plt.tight_layout()
 	plt.show()
@@ -113,7 +112,7 @@ def main():
 	v_high = 15
 	cost_evade = 5
 
-	dynamics_names = ['randomStrategy','checkForSignalsUsage','Exp3WithoutSignals','alwaysBuyWhenAffordable']
+	dynamics_names = ['randomStrategy','checkForSignalsUsage','Exp3WithSignals','alwaysBuyWhenAffordable']
 	extra_args = [[[pr_high,1-pr_high]],[1.0],[],[]]
 
 	price_disc_dynamics = create_price_disc_instance(pr_high,v_high,v_low,cost_evade, dynamics_names,extra_args)

@@ -1,9 +1,4 @@
-import math
-import random
-import matplotlib.pyplot as plt
-import numpy as np
 from dynamics import *
-from matplotlib import gridspec
 import statistics
 
 
@@ -11,14 +6,14 @@ import statistics
 def cumulative_average(l):
     cumulative_sum = 0
     cumulative_count = 0
-    cumulative_average = []
+    cumulative_avg = []
 
     for num in l:
         cumulative_sum += num
         cumulative_count += 1
-        cumulative_average.append(cumulative_sum / cumulative_count)
+        cumulative_avg.append(cumulative_sum / cumulative_count)
 
-    return (cumulative_average)
+    return cumulative_avg
 
 
 # Initialize an instance of the price discrimination game dynamics game
@@ -26,7 +21,8 @@ def cumulative_average(l):
 # dynamics_name: list of names of classes for dynamics in each interaction of the game
 # extra_args: extra_args[i] is the list of extra arguments to be passed to initialize an 
 #	object of class dynamics_names[i]
-def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args, contexts=None):
+def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args, T=10000,
+                               contexts=None):
     price_disc_game = PriceDiscriminationGame(pr_high, v_high, v_low, cost_evade)
     if contexts is not None:
         price_disc_game = GameWithContextualActions(price_disc_game, contexts)
@@ -51,7 +47,7 @@ def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_name
         arg = [price_disc_game, i, ind] + extra_args[i]
         dynamics.append(class_name(*arg))
 
-    return (GameDynamics(price_disc_game, dynamics))
+    return GameDynamics(price_disc_game, dynamics)
 
 
 # Takes rewards in each round of game run for each player
@@ -74,8 +70,12 @@ def plot_cum_buyer_seller_utilities(r, d=None):
         for i in range(rows):
             hlines[i] = [[] for _ in range(cols)]
 
-        s_h = [d.game.eq_utility_seller(), d.game.utility_without_pd_seller()]
-        b_h = [d.game.eq_utility_buyer(), d.game.utility_without_pd_buyer()]
+        game = d.game
+        if game.is_contextual:
+            game = game.base_game
+        s_h = [game.eq_utility_seller(), game.utility_without_pd_seller()]
+        b_h = [game.eq_utility_buyer(), game.utility_without_pd_buyer()]
+
         # s_h = [d.game.utility_without_pd_seller()]
         # b_h = [d.game.utility_without_pd_buyer()]
 
@@ -166,26 +166,47 @@ def plot_actions_frequency(actions):
     plot_matrix_subplots(subplots, hlines, None, None, None, titles)
 
 
+def plot_contextual_actions_frequency(actions):
+    T = len(actions[0])
+    counts = np.zeros((4, T))
+
+    for t in range(T):
+        a = actions[0][t]
+        counts[a[2]][t] += 1
+
+    subplots = [[]]
+    hlines = [[]]
+    titles = [['always low price', 'high sig: low price, low_sig: high price',
+               'high sig: high price, low_sig: low price', 'always high price']]
+    for i in range(4):
+        p = cumulative_average(counts[i].tolist())
+        subplots[0].append(p)
+        hlines[0].append([statistics.mean(p[-50:])])
+
+    plot_matrix_subplots(subplots, hlines, None, None, None, titles)
+
+
 def main():
     pr_high = 0.5
     v_low = 5
     v_high = 15
     cost_evade = 5
 
-    # Buyer: checking for pd, seller: exp3 using signals
-    # dynamics_names = ['randomStrategy','checkForSignalsUsage','ContextualExp3','alwaysBuyWhenAffordable']
-    # extra_args = [[[pr_high,1-pr_high]],[1.0],[[1]],[]]
+    # For without signal usage, set is_contextual = False
+    is_contextual = True
 
-    is_contextual = False
-
-    dynamics_names = ['randomStrategy', 'checkForSignalsUsage', 'EXP3_S', 'alwaysBuyWhenAffordable']
+    dynamics_names = ['randomStrategy', 'checkForSignalsUsage', 'EXP3_IX', 'alwaysBuyWhenAffordable']
     extra_args = [[[pr_high, 1 - pr_high]], [1.0, is_contextual], [], [is_contextual]]
+    contexts = [[], [], [1], [2]]
+    if not is_contextual:
+        contexts = None
 
-    price_disc_dynamics = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args)
-
+    T = 100000
+    price_disc_dynamics = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args, T,
+                                                     contexts)
     num_runs = 1
     rewards = []
-    T = 500000
+
     actions = []
     for i in range(num_runs):
         a, r = price_disc_dynamics.run(T)
@@ -195,14 +216,23 @@ def main():
     # To plot running average of rewards for each run
     plot_cum_buyer_seller_utilities(rewards, price_disc_dynamics)
 
+    # To plot frequencies of action profiles for each run
+    plot_contextual_actions_frequency(actions[-10000:])
 
-# To plot frequencies of action profiles for each run
-# plot_actions_frequency(actions[-10000:])
+    # To plot regret of the first run
+    seller_dynamic = price_disc_dynamics.dynamics[2]
+    avg_reg = seller_dynamic.avg_regret(actions[0])
+    plt.plot(range(avg_reg.shape[0]), avg_reg)
+    plt.show()
 
-# To plot regret of the first run
-# seller_dynamic = price_disc_dynamics.dynamics[2]
-# avg_reg = seller_dynamic.avg_regret(actions[0])
-# plt.plot(range(avg_reg.shape[0]),avg_reg)
-# plt.show()
+    # Plotting regret of never price discriminating
+    # This corresponds to action 3
+    actions_non_pd = actions[0]
+    for i in range(len(a[0])):
+        actions_non_pd[i][2] = 3
+    avg_reg_non_pd = seller_dynamic.avg_regret(actions_non_pd)
+    plt.plot(range(avg_reg_non_pd.shape[0]), avg_reg_non_pd)
+    plt.show()
+
 
 main()

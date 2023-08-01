@@ -4,11 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pulp
 import copy
+import pickle
 
 
 class Game:
     def __init__(self):
-        pass
+        self.is_contextual = False
 
     def rewards_from_actions(self, actions):
         return ([0])
@@ -272,7 +273,7 @@ class GameDynamics:
             for p in range(self.num_players):
                 rewards[p][t] = r[p]
             actions.append(prev_player_actions)
-        return (actions, rewards)
+        return actions, rewards
 
 
 # Captures the algorithm used for a given interaction in the game. 
@@ -285,11 +286,12 @@ class GameDynamics:
 #					game from previous interactions, the action the player takes in the current interaction
 #	reward_and_update: takes player_actions and updates the history and hence the states of the dynamics
 class PlayerDynamic:
-    def __init__(self, g, i, p):
+    def __init__(self, g, i, p, T=10000):
         self.game = g
         self.player_ind = p
         self.interaction_ind = i
         self.num_actions = g.num_actions_per_interaction(i)
+        self.num_rounds = T
 
     def reward_and_update(self, player_actions):
         return (self.game.rewards_from_actions(player_actions))
@@ -321,6 +323,15 @@ class PlayerDynamic:
                 if (avg_cum_baseline_rewards[a][t] > m):
                     m = avg_cum_baseline_rewards[a][t]
             avg_cum_regret[t] = max(0, m - avg_cum_rewards[t])
+
+        # with open('avg_cum_baseline_rewards.pkl', 'wb') as file:
+        #     pickle.dump(avg_cum_baseline_rewards, file)
+        #
+        # with open('avg_cum_regret.pkl', 'wb') as file:
+        #     pickle.dump(avg_cum_regret, file)
+        #
+        # with open('avg_cum_rewards.pkl', 'wb') as file:
+        #     pickle.dump(avg_cum_rewards, file)
 
         return (avg_cum_regret)
 
@@ -417,6 +428,51 @@ class Exp3(PlayerDynamic):
                 return i
 
 
+# Implementation of EXP3-IX from Chapter 12 of Bandits book by Szepesvari and Lattimore
+class EXP3_IX(PlayerDynamic):
+    def __init__(self, g, i, p, T=10000):
+        super().__init__(g, i, p, T)
+        self.num_arms = self.num_actions
+        self.weights = [1.0] * self.num_arms
+        self.t = 1
+        self.eta = np.sqrt(2 * np.log(self.num_arms + 1) / (self.num_rounds * self.num_arms))
+        self.gamma = self.eta / 2
+        # self.eta = np.sqrt(np.log(self.num_arms) / (self.num_rounds * self.num_arms))
+        # self.gamma = 0
+
+
+    def get_probabilities(self):
+        total_weight = np.sum(self.weights)
+        probs = self.weights / total_weight
+        return probs
+
+    def next_action(self, prev_player_actions):
+        probs = self.get_probabilities()
+        action = random.choices(range(self.num_arms), probs)[0]
+        return action
+
+    def normalized_reward(self, r):
+        max_rewards = self.game.max_rewards()
+        min_rewards = self.game.min_rewards()
+        l = min_rewards[self.player_ind]
+        h = max_rewards[self.player_ind]
+        return (r - l) / (h - l)
+
+    def reward_and_update(self, player_actions):
+        p_ind = self.player_ind
+        arm = player_actions[self.interaction_ind]
+        r = self.game.rewards_from_actions(player_actions)[p_ind]
+        reward = self.normalized_reward(r)
+        loss = 1.0 - reward
+        prob = self.get_probabilities()[arm]
+        estimated_loss = loss / (prob + self.gamma)
+        self.weights[arm] *= math.exp(-self.eta * estimated_loss)
+        # estimated_reward = 1.0 - (loss / (prob + self.gamma))
+        # self.weights[arm] *= math.exp(self.eta * estimated_reward)
+        self.t += 1
+        return reward
+
+
 class ContextualDynamic(PlayerDynamic):
     def __init__(self, g, i, p, c_inds, dynamic_name):
         super().__init__(g, i, p)
@@ -497,6 +553,7 @@ class GameWithContextualActions(Game):
         super().__init__()
         self.contexts_per_interaction = contexts_per_interaction
         self.base_game = g
+        self.is_contextual = True
 
     def num_players(self):
         return self.base_game.num_players()
@@ -525,7 +582,7 @@ class GameWithContextualActions(Game):
     def _context_vals_to_ind(self, c_inds, c_vals):
         if len(c_inds) == 0:
             return 0
-        r = 1
+        r = 0
         p = 1
         for i in range(len(c_inds)):
             ind = c_inds[i]
@@ -552,10 +609,10 @@ class GameWithContextualActions(Game):
     # The mapping in the base game is a mapping from values of the context indices to a an action in the base game
     # at the interaction index
     def action_to_base_game_mapping(self, action, int_ind, context_vals):
-        num_actions = self.num_actions_per_interaction(int_ind)
         num_contexts = self.num_context_realizations(int_ind)
         contexts = self.contexts_per_interaction[int_ind]
-        action_vals = decimal_to_base_n(action, num_actions)
+        num_actions_base_game = self.base_game.num_actions_per_interaction(int_ind)
+        action_vals = decimal_to_base_n(action, num_actions_base_game)
         # since action_vals is the mapping applied to all possible contexts,
         # it needs to be of length num_contexts.
         # so we will pad the front of action_vals with sufficient zeros
@@ -577,7 +634,7 @@ class GameWithContextualActions(Game):
             contexts = self.contexts_per_interaction[i]
             context_vals = []
             for c in contexts:
-                context_vals.append(action_profile[c])
+                context_vals.append(realized_action_profile[c])
 
             realized_action = self.action_to_base_game_mapping(a, i, context_vals)
             realized_action_profile.append(realized_action)
@@ -587,6 +644,7 @@ class GameWithContextualActions(Game):
         realized_actions = self.actions_base_game(actions)
         rewards = self.base_game.rewards_from_actions(realized_actions)
         return rewards
+
 
 class ContextualExp3(ContextualDynamic):
     def __init__(self, g, i, p, c_inds):
@@ -669,6 +727,10 @@ class alwaysBuyWhenAffordable(PlayerDynamic):
             self.contextual_game = g
 
     def next_action(self, prev_player_actions):
+        if self.is_contextual:
+            if self.game.is_high_value_buyer(prev_player_actions):
+                return 0
+            return 1
         val = self.game.v_low
         if self.is_contextual:
             prev_player_actions = self.contextual_game.actions_base_game(prev_player_actions)
@@ -681,3 +743,4 @@ class alwaysBuyWhenAffordable(PlayerDynamic):
         if val < price:
             return 1
         return 0
+

@@ -195,13 +195,15 @@ def main():
     # For without signal usage, set is_contextual = False
     is_contextual = True
 
-    dynamics_names = ['randomStrategy', 'checkForSignalsUsage', 'EXP3_IX', 'alwaysBuyWhenAffordable']
+    # dynamics_names = ['randomStrategy', 'checkForSignalsUsage', 'EXP3_IX', 'alwaysBuyWhenAffordable']
+    dynamics_names = ['randomStrategy', 'estimateProbPDSeller', 'EXP3_IX', 'alwaysBuyWhenAffordable']
     extra_args = [[[pr_high, 1 - pr_high]], [1.0, is_contextual], [], [is_contextual]]
     contexts = [[], [], [1], [2]]
     if not is_contextual:
         contexts = None
 
-    T = 100000
+    T = 2000000
+    # T = 200000
     price_disc_dynamics = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args, T,
                                                      contexts)
     num_runs = 1

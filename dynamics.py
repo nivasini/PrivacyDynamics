@@ -714,6 +714,56 @@ class checkForSignalsUsage(PlayerDynamic):
         self.price_per_action[action] += price
         return rewards
 
+# Dynamic for the buyer in the price-discrimination game where the buyer views fraction of rounds with price discrimination
+# to be the probability of a price-discriminating seller. Buyer then place SPBNE equilibrium strategy of the game
+# with pd and non-pd type sellers
+class estimateProbPDSeller(PlayerDynamic):
+    def __init__(self, g, i, p, tol=1, is_contextual=True):
+        super().__init__(g, i, p)
+        self.tol = tol
+        self.price_per_action = np.zeros(self.num_actions)
+        self.num_each_action = np.zeros(self.num_actions)
+        self.contextual = is_contextual
+        self.contextual_game = None
+        self.num_pd = 0
+        self.tot_rounds = 1
+        if is_contextual:
+            self.game = g.base_game
+            self.contextual_game = g
+
+    def next_action(self, prev_player_actions_arg):
+        prev_player_actions = copy.deepcopy(prev_player_actions_arg)
+        prev_player_actions = self.contextual_game.actions_base_game(prev_player_actions)
+        low_sig = self.game.val_low_val_sig()
+        high_sig = self.game.val_high_val_sig()
+        is_high_val_buyer = self.game.is_high_value_buyer(prev_player_actions)
+        if not is_high_val_buyer:
+            return low_sig
+        alpha_hat = self.num_pd / self.num_rounds
+        v_low = self.game.v_low
+        v_high = self.game.v_high
+        delta_v = v_high - v_low
+        cost = self.game.cost_evade
+        if (alpha_hat * delta_v) <= cost:
+            return high_sig
+
+        elements = [low_sig, high_sig]
+        eq_strat = self.game.eq_strat_high_value_buyer()
+        choice = random.choices(elements, [eq_strat, 1.0 - eq_strat])
+        return int(choice[0])
+
+    def reward_and_update(self, player_actions_arg):
+        player_actions = copy.deepcopy(player_actions_arg)
+        if self.contextual:
+            player_actions = self.contextual_game.actions_base_game(player_actions)
+        rewards = self.game.rewards_from_actions(player_actions)
+
+        self.num_rounds += 1
+        if player_actions_arg[2] == 1 or player_actions_arg[2] == 2:
+            self.num_pd += 1
+
+        return rewards
+
 
 # Strategy for deciding to buy where the buyer always buys when the price is not greater than the buyer's value
 class alwaysBuyWhenAffordable(PlayerDynamic):

@@ -212,15 +212,15 @@ def generate_plots():
         player_dynamics.append(repeatedPD)
     
     # Figure 2
-    #plot_utilities(rewards, player_dynamics)
+    plot_utilities(rewards, player_dynamics)
 
     # Figure 3
-    #plot_alpha_hats(alpha_hats)
+    plot_alpha_hats(alpha_hats)
 
     # Figure 4
     #plot_seller_action_frequencies(actions)
 
-    #plot_regret(actions[0], player_dynamics[0].dynamics[2])
+    plot_regret(actions[0], player_dynamics[0].dynamics[2])
 
 if __name__=='__main__':
     

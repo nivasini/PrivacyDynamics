@@ -283,7 +283,7 @@ class GameDynamics:
 #					game from previous interactions, the action the player takes in the current interaction
 #	update: takes player_actions and updates the history and hence the states of the dynamics
 class PlayerDynamic:
-    def __init__(self, g, i, p, T=10000):
+    def __init__(self, g, i, p, T=50000):
         self.game = g
         self.interaction_ind = i
         self.player_ind = p
@@ -425,7 +425,7 @@ class alphaPDStrategy(PlayerDynamic):
 
 # Implemention of EXP3-IX from Chapter 12 of Bandits book by Szepesvari and Lattimore
 class Exp3(PlayerDynamic):
-    def __init__(self, g, i, p, T=10000):
+    def __init__(self, g, i, p, T=50000):
         super().__init__(g, i, p, T)
         self.num_arms = self.num_actions
         self.weights = [1.0] * self.num_arms
@@ -464,49 +464,6 @@ class Exp3(PlayerDynamic):
             self.weights[arm] *= math.exp(-self.eta * estimated_loss)
             self.t += 1
         return
-
-# Implemention of Exp3 from Auer et al. paper
-#class Exp3(PlayerDynamic):
-#    def __init__(self, g, i, p):
-#        super().__init__(g, i, p)
-#        self.num_arms = self.num_actions
-#        self.weights = np.ones(self.num_arms)
-#        self.time_step = 1
-#        self.eta = np.sqrt(np.log(self.num_arms) / (self.num_arms * 2))
-#        self.current_horizon = 2
-#
-#    def get_probabilities(self):
-#        total_weight = np.sum(self.weights)
-#        probs = self.weights / total_weight
-#        return probs
-#
-#    def next_action(self, prev_player_actions):
-#        probs = self.get_probabilities()
-#        return np.random.choice(self.num_arms, p=probs)
-#
-#    # Normalize rewards to lie in [0,1]
-#    def normalized_reward(self, r):
-#        max_rewards = self.game.max_rewards()
-#        min_rewards = self.game.min_rewards()
-#        l = min_rewards[self.player_ind]
-#        h = max_rewards[self.player_ind]
-#        return ((r - l) / (h - l))
-#
-#    def reward_and_update(self, player_actions):
-#        probs = self.get_probabilities()
-#        arm = player_actions[self.interaction_ind]
-#        r = self.game.rewards_from_actions(player_actions)[self.player_ind]
-#        reward = self.normalized_reward(r)
-#        estimated_reward = reward / probs[arm]
-#
-#        self.weights[arm] *= np.exp(self.eta * estimated_reward)
-#
-#        self.time_step += 1
-#        if self.time_step > self.current_horizon:
-#            # If we've passed the current horizon, reset the weights and double the horizon
-#            self.weights = np.ones(self.num_arms)
-#            self.current_horizon *= 2
-#            self.eta = np.sqrt(np.log(self.num_arms) / (self.num_arms * 2 * self.current_horizon))
 
 # Enables one to create multiple instances of EXP3
 class ContextualDynamic(PlayerDynamic):

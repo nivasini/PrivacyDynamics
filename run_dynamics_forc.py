@@ -146,13 +146,15 @@ def plot_utilities(rewards, dynamics):
         axs[0][i].set_xlabel('t')
         axs[0][i].set_ylabel('utility')
         axs[0][i].set_title(f'{dynamic_types[i]} seller')
+        axs[0][i].set(xticks=np.linspace(0, T, 6), xticklabels=np.linspace(0, T, 6).astype(np.int32))
         axs[0][i].legend()
 
         axs[1][i].hlines(y=game.eq_utility_buyer(1),xmin=0,xmax=T,linestyles='dashed',label='($\\alpha$=1)-PD',color=palette[1])
         axs[1][i].hlines(y=game.eq_utility_buyer(0),xmin=0,xmax=T,linestyles='dashed',label='($\\alpha$=0)-PD',color=palette[2])
-        axs[0][i].set_xlabel('t')
+        axs[1][i].set_xlabel('t')
         axs[1][i].set_ylabel('utility')
         axs[1][i].set_title('CBER buyer')
+        axs[1][i].set(xticks=np.linspace(0, T, 6), xticklabels=np.linspace(0, T, 6).astype(np.int32))
         axs[1][i].legend()
         
     sns.despine()
@@ -234,7 +236,7 @@ if __name__=='__main__':
     alpha = cost_evade / (v_high - v_low)
     num_estimators = 1
     palette = sns.color_palette('muted')
-    T = 50000
+    T = 200000
     num_runs = 1
 
     # Flags 

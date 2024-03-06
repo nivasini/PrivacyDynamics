@@ -42,7 +42,7 @@ class Game:
 # The seller gets reward of the price set if the buyer buys and zero otherwise.
 # The buyer gets reward value minus price if they buy and zero otherwise. 
 class PriceDiscriminationGame(Game):
-    def __init__(self, pr_high=0.5, v_high=15, v_low=5, cost=5, n=5):
+    def __init__(self, pr_high=0.5, v_high=15, v_low=5, cost=5, n=5, T=10000):
         super().__init__()
         self.pr_high = pr_high
         self.v_high = v_high
@@ -257,7 +257,6 @@ class GameDynamics:
                 a = self.dynamics[i].next_action(prev_player_actions)
                 prev_player_actions.append(a)
             actions.append(prev_player_actions)
-            #print('actions', prev_player_actions)
             
             # compute rewards for nature, seller, and buyer
             r = self.game.rewards_from_actions(prev_player_actions)
@@ -281,7 +280,7 @@ class GameDynamics:
 #					game from previous interactions, the action the player takes in the current interaction
 #	update: takes player_actions and updates the history and hence the states of the dynamics
 class PlayerDynamic:
-    def __init__(self, g, i, p, T=50000):
+    def __init__(self, g, i, p, T=10000):
         self.game = g
         self.interaction_ind = i
         self.player_ind = p
@@ -423,8 +422,8 @@ class alphaPDStrategy(PlayerDynamic):
 
 # Implemention of EXP3-IX from Chapter 12 of Bandits book by Szepesvari and Lattimore
 class Exp3(PlayerDynamic):
-    def __init__(self, g, i, p, T=50000):
-        super().__init__(g, i, p, T)
+    def __init__(self, g, i, p):
+        super().__init__(g, i, p)
         self.num_arms = self.num_actions
         self.weights = [1.0] * self.num_arms
         self.t = 1

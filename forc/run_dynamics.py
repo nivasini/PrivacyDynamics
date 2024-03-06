@@ -9,9 +9,8 @@ import pdb
 # player_args: player_args[i] is the list of extra arguments to be passed to initialize an 
 #	object of class dynamics_names[i]
 
-def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n=None,
-                               dynamics_names=None, player_args=None, T=None,
-                               contexts=None):
+def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T,
+                               dynamics_names=None, player_args=None, contexts=None):
     price_disc_game = PriceDiscriminationGame(pr_high, v_high, v_low, cost_evade, n)
 
     ind_nature = 0
@@ -50,7 +49,7 @@ def plot_order_of_utilities():
     for i,state in enumerate(states):
         v_high = params[i]['v_high']
         cost_evade = params[i]['cost_evade']
-        game = create_price_disc_instance(pr_high, v_high, v_low, cost_evade).game
+        game = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T).game
         seller_utilities = [game.eq_utility('seller', alpha) for alpha in alphas]
         buyer_utilities = [game.eq_utility('buyer', alpha) for alpha in alphas]
         
@@ -176,7 +175,7 @@ def create_dynamics(price_strat, is_contextual):
     dynamics_names = [nature_strat, signal_strat, price_strat, buy_strat]
     player_args = [[[pr_high, 1 - pr_high]], [], [alpha], []]
     contexts = [[], [], [1], [2]] if is_contextual else [[], [], [], []]
-    repeatedPD = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, dynamics_names, player_args, T, contexts)
+    repeatedPD = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T, dynamics_names, player_args, contexts)
     r, a, a_hats = repeatedPD.run(T)
     return r, a, a_hats, repeatedPD
 
@@ -216,7 +215,7 @@ if __name__=='__main__':
     v_low = 5
     v_high = 15
     cost_evade = 5
-    n = 5
+    n = 10
     perturb_prob = 0
     alpha = cost_evade / (v_high - v_low)
     num_estimators = 1

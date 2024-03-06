@@ -5,6 +5,7 @@ import numpy as np
 import pulp
 import copy
 import pickle
+import pdb
 
 
 class Game:

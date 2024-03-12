@@ -44,7 +44,7 @@ Plotting Functions
 def plot_order_of_utilities():
     fig,axs = plt.subplots(1, 2, figsize=(10,3))
     
-    alphas = np.linspace(0,1,10000)
+    alphas = np.linspace(0, 1, 10000)
     
     states = ['$\\theta_l \\geq \\mu\\theta_h$', '$\\theta_l < \\mu\\theta_h$']
     params = [{'v_high': 10, 'cost_evade': 2.5}, {'v_high': 15, 'cost_evade': 5}]
@@ -153,12 +153,13 @@ def plot_noise_effect():
     print('plotting noise effects')
     noise_levels = np.arange(0, 1, 0.1)
     fig, axs = plt.subplots(nrows=1, ncols=len(price_strat_labels), figsize=(15, 5))
-    for i in range(len(price_strat_labels)):
+    for i,label in enumerate(price_strat_labels):
+        print(label)
         conv_seller_utility = []
         conv_buyer_utility = []
-        for noise_level in noise_levels:
-            print('noise level', noise_level)
-            r, _, _, _ = create_dynamics(i, noise_level=noise_level)
+        for pr_flip in noise_levels:
+            print('noise level', pr_flip)
+            r, _, _, _ = create_dynamics(i, pr_flip=pr_flip)
             conv_seller_utility.append(cumulative_average(r[2])[-1])
             conv_buyer_utility.append(cumulative_average(r[1])[-1])
             
@@ -167,6 +168,7 @@ def plot_noise_effect():
         
         axs[i].set_xlabel('flip probability')
         axs[i].set_ylabel('Achieved Average Utility')
+        axs[i].set_title(label)
         axs[i].legend()
     
     fig.autofmt_xdate()
@@ -208,9 +210,11 @@ def plot_regret(actions, seller_dynamics):
     plt.show()
 
 # Runs Repeated PD protocol
-def create_dynamics(price_strat_idx):
+def create_dynamics(price_strat_idx, **kwargs):
     
     price_strat = price_strat_args[price_strat_idx]
+    if 'pr_flip' in kwargs:
+        pr_flip = kwargs['pr_flip']
 
     strategies = [nature_strat, signal_strat, price_strat['strat_name'], buy_strat]
     num_dynamics = [1, num_estimators, price_strat['num_dynamics'], 1]
@@ -243,7 +247,7 @@ def generate_plots():
     player_dynamics = []
     for i in range(len(price_strat_args)):
         print(price_strat_labels[i])
-        r, a, a_hats, repeated_pd = create_dynamics(i)
+        r, a, a_hats, repeated_pd = create_dynamics(i, **kwargs)
         rewards.append(r)
         actions.append(a)
         alpha_hats.append(a_hats)

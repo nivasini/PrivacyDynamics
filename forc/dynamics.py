@@ -217,17 +217,18 @@ class PriceDiscriminationGame(Game):
                          alpha * ((1 - self.pr_high) * self.v_low - 
                          self.pr_high * (self.v_high - self.v_low) * q))
         
-        elif player_type == 'buyer':
+        else:
+            pr_high = 1 if player_type == 'high value buyer' else self.pr_high
             if self.v_low >= self.pr_high * self.v_high:
                 if alpha <= self.cost_evade/(self.v_high - self.v_low):
-                    u = self.pr_high * ((1 - alpha) * (self.v_high - self.v_low))
+                    u = pr_high * ((1 - alpha) * (self.v_high - self.v_low))
                 else:
-                    u = self.pr_high * ((self.v_high - self.v_low) - self.cost_evade)
+                    u = pr_high * ((self.v_high - self.v_low) - self.cost_evade)
             else:
                 if alpha <= self.cost_evade/(self.v_high - self.v_low):
                     u = 0
                 else:
-                    u = self.pr_high * ((-self.cost_evade * q) + (alpha * (self.v_high - self.v_low) * q))
+                    u = pr_high * ((-self.cost_evade * q) + (alpha * (self.v_high - self.v_low) * q))
         return u
 
 # When a game is played repeatedly, the dynamics are captured by the following Dynamics classes
@@ -244,10 +245,11 @@ class GameDynamics:
         self.T = self.game.T
 
     # Runs player dyamics for T rounds and returns rewards accumulated in each round
-    def run(self):
+    def run(self, price_strat):
         rewards = np.zeros((self.num_players, self.T))
         actions = []
         alpha_hats = []
+        alphas = []
         for t in range(self.T):
             if t % 10000 == 0:
                 print('t',t)
@@ -265,11 +267,21 @@ class GameDynamics:
             # update player parameters
             for i in range(self.num_interactions):
                 updated_param = self.dynamics[i].update(prev_player_actions)
-                if not updated_param is None:
+                if isinstance(self.dynamics[i], signalDynamic):
                     alpha_hats.append(updated_param)
+                if isinstance(self.dynamics[i], priceDynamic):
+                    if price_strat == 'Exp3':
+                        alphas.append(0)
+                    elif price_strat == '$\\alpha^*$-PD':
+                        alphas.append(updated_param[0])
+                    elif price_strat == 'CExp3':
+                        alphas.append((updated_param[0][0]
+                                       * updated_param[1][1])
+                                       + (updated_param[0][1]
+                                       * updated_param[1][0]))
             for p in range(self.num_players):
                 rewards[p][t] = r[p]
-        return rewards, actions, alpha_hats
+        return rewards, actions, alpha_hats, alphas
 
 # Captures the algorithm used for a given interaction in the game. 
 # Attributes:
@@ -383,10 +395,12 @@ class ContextualDynamic(PlayerDynamic):
         return actions
 
     def update(self, player_actions):
+        updated_params = []
         for i in range(self.num_dynamics):
             actions_per_dynamic = list(map(lambda x: list(np.array(x)[self.assignments[i]]), player_actions))
-            self.dynamics[i].update(actions_per_dynamic)
-        return 
+            updated_param = self.dynamics[i].update(actions_per_dynamic)
+            updated_params.append(updated_param)
+        return updated_params
 
 '''
 Nature's Strategy
@@ -423,10 +437,13 @@ class consistentEstimate(PlayerDynamic):
         self.price_per_action = np.zeros(self.num_actions)
         self.num_each_action = np.zeros(self.num_actions)
         self.num_rounds = 1
-        self.alpha_hat = 0.0
+        self.alpha_hat = 0.5
         self.normalized_num_rounds_pd = 0
         self.player_args = player_args
         self.pr_flip = self.player_args['pr_flip']
+        self.noise_bounds = self.player_args['noise_bounds']
+        self.noise = 0.0
+        self.round = 1
     
     def flip_action(self, action):
         opposite_action = self.game.val_high_sig() if action==self.game.val_low_sig() else self.game.val_low_sig()
@@ -446,7 +463,7 @@ class consistentEstimate(PlayerDynamic):
         return actions
 
     def update(self, player_actions):
-
+        
         low_sig = self.game.val_low_sig()
         high_sig = self.game.val_high_sig()
         low_price = self.game.val_low_price()
@@ -468,7 +485,9 @@ class consistentEstimate(PlayerDynamic):
             prob_all_high_signals = (self.game.pr_high * (1 - self.game.prob_evade_high_val_buyer(self.alpha_hat))) ** self.game.n
             prob_round_is_inf = 1 - (prob_all_low_signals + prob_all_high_signals)
             self.normalized_num_rounds_pd += ((pd_detected * round_is_inf) / prob_round_is_inf) 
-        self.alpha_hat = self.normalized_num_rounds_pd / self.num_rounds
+        true_alpha_hat = self.normalized_num_rounds_pd / self.num_rounds
+        noise = np.random.uniform(*self.noise_bounds)
+        self.alpha_hat = min(1, max(true_alpha_hat + noise, 0))
         return self.alpha_hat
 
 class signalDynamic(ContextualDynamic):
@@ -497,7 +516,7 @@ class alphaPD(PlayerDynamic):
         return actions
     
     def update(self, prev_player_actions):
-        return
+        return self.alpha
 
 # Implemention of EXP3-IX from Chapter 12 of Bandits book by Szepesvari and Lattimore
 class Exp3(PlayerDynamic):
@@ -508,6 +527,7 @@ class Exp3(PlayerDynamic):
         self.t = 1
         self.eta = np.sqrt(np.log(self.num_arms) / (self.game.T * self.num_arms))
         self.gamma = 0
+        self.probabilities = self.get_probabilities()
 
     def get_probabilities(self):
         total_weight = np.sum(self.weights)
@@ -543,7 +563,7 @@ class Exp3(PlayerDynamic):
             estimated_loss = loss / (prob + self.gamma)
             self.weights[arm] *= math.exp(-self.eta * estimated_loss)
             self.t += 1
-        return
+        return self.get_probabilities()
 
 class priceDynamic(ContextualDynamic):
     def __init__(self, g, i, p, strategy_name, num_dynamics, player_args, contexts):

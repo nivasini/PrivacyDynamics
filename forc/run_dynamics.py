@@ -247,16 +247,16 @@ def plot_cumulative_avg_utility_per_noise_interval(noise_interval):
         for j in range(len(players)):
             for idx, alpha in enumerate(alpha_levels):
                 if j==0:
-                    label = f'($\\alpha$={alpha})-PD' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD'
+                    legend_label = f'($\\alpha$={alpha})-PD' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD'
                 else:
-                    label = None
+                    legend_label = None
                 axs[i].hlines(y=game.eq_utility(players[j], alpha),xmin=-1,xmax=1,
-                              linestyles='dashed',label=label,color=palette[idx+2])
+                              linestyles='dashed',label=legend_label,color=palette[idx+2])
             
-            axs[i].set_xlabel('noise bound')
-            axs[i].set_ylabel('Cumulative Average Utility')
-            axs[i].set_title(label)
-            axs[i].legend()
+        axs[i].set_xlabel('noise bound')
+        axs[i].set_ylabel('Cumulative Average Utility')
+        axs[i].set_title(label)
+        axs[i].legend()
     
     fig.autofmt_xdate()
     sns.despine()
@@ -352,12 +352,12 @@ def generate_plots():
     #plot_order_of_utilities()
     #plot_flip_effect()
     #plot_utilities_per_noise_interval(noise_interval=0.25)
-    #plot_cumulative_avg_utility_per_noise_interval(noise_interval=0.1)
+    #plot_cumulative_avg_utility_per_noise_interval(noise_interval=0.1) 
     
     all_rewards, all_actions, all_alpha_hats, all_alphas, all_dynamics = create_all_dynamics()
     plot_utilities(all_rewards, all_dynamics)
     plot_alphas_vs_alpha_hats(all_alphas, all_alpha_hats)
-    plot_regret(all_actions[0], all_dynamics[0].dynamics[2])
+    #plot_regret(all_actions[0], all_dynamics[0].dynamics[2])
     #plot_seller_action_frequencies(actions)
 
 if __name__=='__main__':
@@ -408,7 +408,7 @@ if __name__=='__main__':
    
     # Plot Settings
     price_strat_labels = ['Exp3', 'CExp3', '$\\alpha^*$-PD']
-    path = '/Users/marielwerner/desktop/'
+    path = '/Users/marielwerner/desktop/PrivacyPlots/'
     data_path =  os.getcwd() + '/data/'
     
     generate_plots()

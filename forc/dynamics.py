@@ -150,6 +150,7 @@ class PriceDiscriminationGame(Game):
                 else:
                     r_s[j] += self.v_high
         
+        #print('r_b', r_b)
         r_n = np.mean(r_n)
         r_b = np.mean(r_b)
         r_s = np.mean(r_s)
@@ -203,7 +204,7 @@ class PriceDiscriminationGame(Game):
     # Returns seller/buyer alpha-PD utilities
     def eq_utility(self, player_type, alpha):
         q = self.q_star()
-        if player_type == 'seller':
+        if player_type == 'Seller':
             if self.v_low >= self.pr_high * self.v_high:
                 if alpha <= self.cost_evade / (self.v_high - self.v_low):
                     u = self.v_low + (alpha * self.pr_high * (self.v_high - self.v_low))
@@ -218,7 +219,7 @@ class PriceDiscriminationGame(Game):
                          self.pr_high * (self.v_high - self.v_low) * q))
         
         else:
-            pr_high = 1 if player_type == 'high value buyer' else self.pr_high
+            pr_high = 1 if player_type == 'High Value Buyer' else self.pr_high
             if self.v_low >= self.pr_high * self.v_high:
                 if alpha <= self.cost_evade/(self.v_high - self.v_low):
                     u = pr_high * ((1 - alpha) * (self.v_high - self.v_low))
@@ -262,7 +263,9 @@ class GameDynamics:
             actions.append(prev_player_actions)
             
             # compute rewards for nature, seller, and buyer
+            #print(prev_player_actions)
             r = self.game.rewards_from_actions(prev_player_actions)
+            #print(r)
             
             # update player parameters
             for i in range(self.num_interactions):
@@ -271,14 +274,13 @@ class GameDynamics:
                     alpha_hats.append(updated_param)
                 if isinstance(self.dynamics[i], priceDynamic):
                     if price_strat == 'Exp3':
-                        alphas.append(0)
+                        alpha = 0
                     elif price_strat == '$\\alpha^*$-PD':
-                        alphas.append(updated_param[0])
+                        alpha = updated_param[0]
                     elif price_strat == 'CExp3':
-                        alphas.append((updated_param[0][0]
-                                       * updated_param[1][1])
-                                       + (updated_param[0][1]
-                                       * updated_param[1][0]))
+                        alpha = ((updated_param[0][0] * updated_param[1][1]) +
+                                 (updated_param[0][1] * updated_param[1][0]))
+                    alphas.append(alpha)
             for p in range(self.num_players):
                 rewards[p][t] = r[p]
         return rewards, actions, alpha_hats, alphas

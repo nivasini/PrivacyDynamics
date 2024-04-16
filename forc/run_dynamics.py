@@ -70,9 +70,10 @@ def plot_order_of_utilities():
 
     for ax in axs:
         ax.set(xticks=np.linspace(0, 1, 3), xticklabels=[0, '$\\alpha^*$', 1])
-        ax.set_xlabel('$\\alpha$')
-        ax.set_ylabel('Utility')
-        ax.legend()
+        ax.tick_params(axis='both', labelsize=axis_fs)
+        ax.set_xlabel('$\\alpha$', fontsize=label_fs)
+        ax.set_ylabel('Utility', fontsize=label_fs)
+        ax.legend(fontsize=legend_fs)
 
     sns.despine()
     fig.tight_layout()
@@ -115,14 +116,12 @@ def plot_seller_action_frequencies(actions):
         frequencies, action_types = generate_seller_action_frequencies(actions[i], dynamic_type, i)
         for j in range(len(frequencies)):
             sns.lineplot(x=np.arange(T), y=frequencies[j], color=muted_palette[j], label=labels[j], ax=ax)
-        ax.set_xlabel('t')
-        #if i==0:
-        ax.set_ylabel('Action Frequency')
-        ax.set_title(f'{price_strat_labels[i]}')
-        ax.tick_params(axis='both')
-        ax.legend()
+        ax.set_xlabel('t', fontsize=label_fs)
+        ax.set_ylabel('Action Frequency', fontsize=label_fs)
+        ax.set_title(f'{price_strat_labels[i]}', fontsize=label_fs)
+        ax.tick_params(axis='both', labelsize=axis_fs)
+        ax.legend(fontsize=legend_fs)
     
-    sns.set_context()
     fig.autofmt_xdate()
     sns.despine()
     fig.tight_layout()
@@ -181,14 +180,14 @@ def plot_utilities(rewards, dynamics):
             axs[j].hlines(y=game.eq_utility(players[j], alpha), xmin=0, xmax=T, linestyles='dashed', 
                           label=label, color=muted_palette[equil_color_idxs[i]])
 
-        axs[j].set_xlabel('t')
-        axs[j].set_ylabel('Utility')
-        axs[j].tick_params(axis='both')
-        axs[j].set_title(players[j])
+        axs[j].set_xlabel('t', fontsize=label_fs)
+        axs[j].set_ylabel('Utility', fontsize=label_fs)
+        axs[j].tick_params(axis='both', labelsize=axis_fs)
+        axs[j].set_title(players[j], fontsize=label_fs)
 
-    axs[0].legend(ncols=2)
-    axs[1].legend(ncols=2)
-    sns.set_context()
+    axs[0].legend(ncols=2, fontsize=legend_fs)
+    axs[1].legend(ncols=2, fontsize=legend_fs)
+    #sns.set_context()
     fig.autofmt_xdate()
     sns.despine()
     fig.tight_layout()
@@ -341,11 +340,10 @@ def plot_cumulative_avg_utility_per_noise_interval(noise_interval):
                       linestyles='dashed', label=legend_label,
                       color=muted_palette[equil_color_idxs[i]])
             
-    ax.set_xlabel('Estimator Noise Level')
-    ax.set_ylabel('Seller\'s Cumulative \n Average Utility')
-    ax.tick_params(axis='both')
-    ax.legend(ncols=2)
-    sns.set_context()
+    ax.set_xlabel('Estimator Noise Level', fontsize=label_fs)
+    ax.set_ylabel('Seller\'s Cumulative \n Average Utility', fontsize=label_fs)
+    ax.tick_params(axis='both', labelsize=axis_fs)
+    ax.legend(ncols=2, fontsize=legend_fs)
     fig.autofmt_xdate()
     sns.despine()
     fig.tight_layout()
@@ -364,13 +362,11 @@ def plot_alphas_vs_alpha_hats(alphas, alpha_hats):
         sns.lineplot(x=np.arange(T), y=cumulative_average(alphas[i]), 
                      color=dark_palette[color_idxs[i]], label=f'{label} '+ '$\\overline{\\alpha_t}$', linestyle='--')
 
-    ax.legend()
-    ax.set_xlabel('t')
-    ax.set_ylabel('$\\hat{\\alpha}_t$ and  $\\overline{\\alpha_t}$')
-    ax.tick_params(axis='both')
-    #plt.ticklabel_format(useOffset=False)
-    fig.suptitle('CBER buyer')
-    sns.set_context()
+    ax.legend(fontsize=legend_fs)
+    ax.set_xlabel('t', fontsize=label_fs)
+    ax.set_ylabel('$\\hat{\\alpha}_t$ and  $\\overline{\\alpha_t}$', fontsize=label_fs)
+    ax.tick_params(axis='both', labelsize=axis_fs)
+    fig.suptitle('CBER buyer', fontsize=label_fs)
     fig.autofmt_xdate()
     sns.despine()
     fig.tight_layout()
@@ -451,6 +447,10 @@ def generate_plots():
     #plot_regret(all_actions[0], all_dynamics[0].dynamics[2])
 
 if __name__=='__main__':
+    # Fix randomness
+    seed = 0
+    np.random.seed(seed)
+    random.seed(seed)
     
     # Parameters 
     pr_high = 0.5
@@ -499,10 +499,9 @@ if __name__=='__main__':
     price_strat_labels = ['Exp3', 'CExp3', '$\\alpha^*$-PD']
     path = '/Users/marielwerner/desktop/PrivacyPlots/'
     data_path =  os.getcwd() + '/data/'
-    test_strat = '$\\alpha^*$-PD'
-    label_fs = 12
-    axis_fs = 12
-    legend_fs = 10
+    label_fs = 18
+    axis_fs = 18
+    legend_fs = 12
     muted_palette = sns.color_palette('muted')
     dark_palette = sns.color_palette('dark')
     pastel_palette = sns.color_palette('pastel')

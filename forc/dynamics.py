@@ -443,8 +443,8 @@ class consistentEstimate(PlayerDynamic):
         self.normalized_num_rounds_pd = 0
         self.player_args = player_args
         self.pr_flip = self.player_args['pr_flip']
-        self.noise_bounds = self.player_args['noise_bounds']
-        self.noise = 0.0
+        self.bias_bounds = self.player_args['bias_bounds']
+        self.bias = 0.0
         self.round = 1
     
     def flip_action(self, action):
@@ -488,8 +488,8 @@ class consistentEstimate(PlayerDynamic):
             prob_round_is_inf = 1 - (prob_all_low_signals + prob_all_high_signals)
             self.normalized_num_rounds_pd += ((pd_detected * round_is_inf) / prob_round_is_inf) 
         true_alpha_hat = self.normalized_num_rounds_pd / self.num_rounds
-        noise = np.random.uniform(*self.noise_bounds)
-        self.alpha_hat = min(1, max(true_alpha_hat + noise, 0))
+        bias = np.random.uniform(*self.bias_bounds)
+        self.alpha_hat = min(1, max(true_alpha_hat + bias, 0))
         return self.alpha_hat
 
 class signalDynamic(ContextualDynamic):

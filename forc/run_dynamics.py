@@ -75,6 +75,7 @@ def plot_order_of_utilities():
         ax.set_ylabel('Utility', fontsize=label_fs)
         ax.legend(fontsize=legend_fs)
 
+    axs[0].legend(loc=(0.5, 0.5), fontsize=legend_fs)
     sns.despine()
     fig.tight_layout()
     plt.savefig(path+'order_of_utilities.pdf')
@@ -119,7 +120,7 @@ def plot_seller_action_frequencies(actions):
         ax.set_xlabel('t', fontsize=label_fs)
         ax.set_ylabel('Action Frequency', fontsize=label_fs)
         ax.set_title(f'{price_strat_labels[i]}', fontsize=label_fs)
-        ax.tick_params(axis='both', labelsize=axis_fs)
+        ax.tick_params(axis='both', labelsize=16)
         ax.legend(fontsize=legend_fs)
     
     fig.autofmt_xdate()
@@ -129,36 +130,6 @@ def plot_seller_action_frequencies(actions):
     plt.show()
 
 # Code for Figure 2 -- plots buyer/seller utilities for a seller playing various algorithms against a CBER buyer 
-#def plot_utilities(rewards, dynamics):
-#    print('plotting utilities')
-#    players = {0:'seller', 1:'buyer'}
-#    alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
-#    fig, axs = plt.subplots(len(players), len(price_strat_labels), figsize=(15, 5))
-#    colors = [muted_palette[i] for i in [0, 1, 2, 4]]
-#    for i in range(np.shape(rewards)[0]):
-#        game = dynamics[i].game
-#        utilities = []
-#        seller_utilities = cumulative_average(rewards[i][2])
-#        buyer_utilities = cumulative_average(rewards[i][1])
-#        utilities.append(seller_utilities)
-#        utilities.append(buyer_utilities)
-#        for j in range(len(players)):
-#            sns.lineplot(x=np.arange(T), y=utilities[j], ax=axs[j][i], color=colors[0])
-#            for idx, alpha in enumerate(alpha_levels):
-#                label = f'($\\alpha$={alpha})-PD' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD'
-#                axs[j][i].hlines(y=game.eq_utility(players[j],alpha),xmin=0,xmax=T,linestyles='dashed',label=label,color=colors[idx+1])
-#            axs[j][i].set_title(f'{price_strat_labels[i]} {players[j]}') if j==0 else axs[j][i].set_title(f'CBER {players[j]}')
-#            axs[1][i].set_xlabel('t', fontsize=label_fs)
-#            axs[j][0].set_ylabel('Utility', fontsize=label_fs)
-#            axs[j][i].tick_params(axis='both', labelsize=axis_fs)
-#            axs[j][i].legend(fontsize=legend_fs)
-#    
-#    fig.autofmt_xdate()
-#    sns.despine()
-#    fig.tight_layout()
-#    plt.savefig(path+'utilities.pdf')
-#    plt.show()
-
 def plot_utilities(rewards, dynamics):
     print('plotting utilities')
     players = {0:'Seller', 1:'Buyer'}
@@ -187,7 +158,6 @@ def plot_utilities(rewards, dynamics):
 
     axs[0].legend(ncols=2, fontsize=legend_fs)
     axs[1].legend(ncols=2, fontsize=legend_fs)
-    #sns.set_context()
     fig.autofmt_xdate()
     sns.despine()
     fig.tight_layout()
@@ -195,7 +165,7 @@ def plot_utilities(rewards, dynamics):
     plt.show()
 
 def plot_flip_effect():
-    print('plotting noise effects')
+    print('plotting bias effects')
     flip_probs = np.arange(0, 1, 0.1)
     fig, axs = plt.subplots(nrows=1, ncols=len(price_strat_labels), figsize=(15, 5))
     for i,label in enumerate(price_strat_labels):
@@ -204,7 +174,7 @@ def plot_flip_effect():
         conv_buyer_utility = []
         for pr_flip in flip_probs:
             print('flip prob', pr_flip)
-            r = create_dynamics(i, pr_flip=pr_flip, noise_bounds=[0,0])[0]
+            r = create_dynamics(i, pr_flip=pr_flip, bias_bounds=[0,0])[0]
             conv_seller_utility.append(cumulative_average(r[2])[-1])
             conv_buyer_utility.append(cumulative_average(r[1])[-1])
             
@@ -224,24 +194,24 @@ def plot_flip_effect():
     plt.savefig(path + 'flip_effect.pdf')
     plt.show()
 
-def plot_utilities_per_noise_interval(noise_interval):
+def plot_utilities_per_bias_interval(bias_interval):
     players = {0:'seller', 1:'buyer'}
     alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
-    noise_bounds = np.arange(-1, 1, noise_interval)
+    bias_bounds = np.arange(-1, 1, bias_interval)
     colors = [muted_palette[i] for i in [0, 1, 2, 4]]
     game = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T).game
-    fig = plt.figure(layout='constrained', figsize=(15, 5 * len(noise_bounds)))
-    subfigs = fig.subfigures(len(noise_bounds), 1)
+    fig = plt.figure(layout='constrained', figsize=(15, 5 * len(bias_bounds)))
+    subfigs = fig.subfigures(len(bias_bounds), 1)
 
-    for i, noise_bound in enumerate(noise_bounds):
-        print('noise bound', noise_bound)
+    for i, bias_bound in enumerate(bias_bounds):
+        print('bias bound', bias_bound)
         axs = subfigs[i].subplots(len(players), len(price_strat_labels), sharey=True)
-        subfigs[i].suptitle(f'noise interval = {[noise_bounds[i], noise_bounds[i] + noise_interval]}')
+        subfigs[i].suptitle(f'bias interval = {[bias_bounds[i], bias_bounds[i] + bias_interval]}')
         subfigs[i].set_facecolor('0.75')
         rewards = []
         for j, label in enumerate(price_strat_labels):
             print(label)
-            r = create_dynamics(j, pr_flip=0, noise_bounds=[noise_bounds[i], noise_bounds[i] + noise_interval])[0]
+            r = create_dynamics(j, pr_flip=0, bias_bounds=[bias_bounds[i], bias_bounds[i] + bias_interval])[0]
             rewards.append(r)
         for j, label in enumerate(price_strat_labels):
             utilities = []
@@ -266,58 +236,14 @@ def plot_utilities_per_noise_interval(noise_interval):
     sns.despine()
     fig.tight_layout()
     plt.subplots_adjust(left=0.125, bottom=0.1, right=0.9, top=0.9, wspace=0.2, hspace=0.2)
-    plt.savefig(path+f'utilities_per_noise_interval.pdf')
+    plt.savefig(path+f'utilities_per_bias_interval.pdf')
     plt.show()
 
-#def plot_cumulative_avg_utility_per_noise_interval(noise_interval):
-#    print('plotting noise intervals')
-#    players = {0:'seller', 1:'buyer'}
-#    alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
-#    noise_bounds = np.arange(-1, 1, noise_interval)
-#    fig, axs = plt.subplots(nrows=1, ncols=len(price_strat_labels), figsize=(15, 3))
-#    colors = [muted_palette[i] for i in [0, 1, 2, 4]]
-#    for i,label in enumerate(price_strat_labels):
-#        print(label)
-#        conv_seller_utility = []
-#        conv_buyer_utility = []
-#        for noise_bound in noise_bounds:
-#            print('noise bounds', [noise_bound, noise_bound + noise_interval])
-#            r = create_dynamics(i, pr_flip=0, noise_bounds=[noise_bound, noise_bound + noise_interval])[0]
-#            conv_seller_utility.append(cumulative_average(r[2])[-1])
-#            conv_buyer_utility.append(cumulative_average(r[1])[-1])
-#            
-#        sns.lineplot(x=noise_bounds, y=conv_seller_utility, ax=axs[i], color=muted_palette[0])
-#        #sns.lineplot(x=noise_bounds, y=conv_buyer_utility, ax=axs[i],
-#        #             label='buyer', color=muted_palette[1])
-#        game = create_dynamics(i, pr_flip=0, noise_bounds=[])[-1].game
-#        #for j in range(len(players)):
-#        for j in range(1):
-#            for idx, alpha in enumerate(alpha_levels):
-#                if j==0:
-#                    legend_label = f'($\\alpha$={alpha})-PD' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD'
-#                else:
-#                    legend_label = None
-#                axs[i].hlines(y=game.eq_utility(players[j], alpha), xmin=-1, xmax=1,
-#                              linestyles='dashed', label=legend_label,
-#                              color=colors[idx+1])
-#            
-#        axs[i].set_xlabel('Estimator Noise Level', fontsize=label_fs)
-#        axs[0].set_ylabel('Seller\'s Cumulative \n Average Utility', fontsize=label_fs)
-#        axs[i].set_title(label, fontsize=label_fs)
-#        axs[i].tick_params(axis='both', labelsize=axis_fs)
-#        axs[i].legend()
-#    
-#    fig.autofmt_xdate()
-#    sns.despine()
-#    fig.tight_layout()
-#    plt.savefig(path + 'cumulative_avg_utility_per_noise_interval.pdf')
-#    plt.show()
-
-def plot_cumulative_avg_utility_per_noise_interval(noise_interval):
-    print('plotting noise intervals')
+def plot_cumulative_avg_utility_per_bias_interval(bias_interval):
+    print('plotting bias intervals')
     players = {0:'Seller', 1:'Buyer'}
     alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
-    noise_bounds = np.arange(-1, 1, noise_interval)
+    bias_bounds = np.arange(-1, 1, bias_interval)
     fig, ax = plt.subplots()
     utility_color_idxs = [0, 2, 3]
     equil_color_idxs = [1, 4, 7]
@@ -325,29 +251,29 @@ def plot_cumulative_avg_utility_per_noise_interval(noise_interval):
         print(label)
         conv_seller_utility = []
         conv_buyer_utility = []
-        for noise_bound in noise_bounds:
-            print('noise bounds', [noise_bound, noise_bound + noise_interval])
-            r = create_dynamics(i, pr_flip=0, noise_bounds=[noise_bound, noise_bound + noise_interval])[0]
+        for bias_bound in bias_bounds:
+            print('bias bounds', [bias_bound, bias_bound + bias_interval])
+            r = create_dynamics(i, pr_flip=0, bias_bounds=[bias_bound, bias_bound + bias_interval])[0]
             conv_seller_utility.append(cumulative_average(r[2])[-1])
             conv_buyer_utility.append(cumulative_average(r[1])[-1])
-        sns.lineplot(x=noise_bounds, y=conv_seller_utility,
+        sns.lineplot(x=bias_bounds, y=conv_seller_utility,
                      color=muted_palette[utility_color_idxs[i]], label=label)
 
-    game = create_dynamics(0, pr_flip=0, noise_bounds=[])[-1].game
+    game = create_dynamics(0, pr_flip=0, bias_bounds=[])[-1].game
     for i, alpha in enumerate(alpha_levels):
         legend_label = f'($\\alpha$={alpha})-PD equil.' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD equil.'
         ax.hlines(y=game.eq_utility(players[0], alpha), xmin=-1, xmax=1,
                       linestyles='dashed', label=legend_label,
                       color=muted_palette[equil_color_idxs[i]])
             
-    ax.set_xlabel('Estimator Noise Level', fontsize=label_fs)
+    ax.set_xlabel('Estimator Bias Level', fontsize=label_fs)
     ax.set_ylabel('Seller\'s Cumulative \n Average Utility', fontsize=label_fs)
-    ax.tick_params(axis='both', labelsize=axis_fs)
+    ax.tick_params(axis='both', labelsize=12)
     ax.legend(ncols=2, fontsize=legend_fs)
     fig.autofmt_xdate()
     sns.despine()
     fig.tight_layout()
-    plt.savefig(path + 'cumulative_avg_utility_per_noise_interval.pdf')
+    plt.savefig(path + 'cumulative_avg_utility_per_bias_interval.pdf')
     plt.show()
 
 # Code for Figure 3 -- plots convergence of CBER's estimator over rounds
@@ -392,8 +318,8 @@ def create_dynamics(price_strat_idx, **kwargs):
     price_strat = price_strat_args[price_strat_idx]
     if 'pr_flip' in kwargs:
         pr_flip = kwargs['pr_flip']
-    if 'noise_bounds' in kwargs:
-        noise_bounds = kwargs['noise_bounds']
+    if 'bias_bounds' in kwargs:
+        bias_bounds = kwargs['bias_bounds']
 
     strategies = [nature_strat, signal_strat, price_strat['strat_name'], buy_strat]
     num_dynamics = [1, num_estimators, price_strat['num_dynamics'], 1]
@@ -401,7 +327,7 @@ def create_dynamics(price_strat_idx, **kwargs):
                    {'num_estimators': num_estimators,
                     'pr_estimators': pr_estimators,
                     'pr_flip': pr_flip,
-                    'noise_bounds': noise_bounds},
+                    'bias_bounds': bias_bounds},
                    price_strat['player_args'],
                    None]
 
@@ -423,7 +349,7 @@ def create_all_dynamics():
     all_dynamics = []
     for i in range(len(price_strat_args)):
         print(price_strat_labels[i])
-        rewards, actions, alpha_hats, alphas, repeated_pd = create_dynamics(i, pr_flip=0, noise_bounds=[0,0])
+        rewards, actions, alpha_hats, alphas, repeated_pd = create_dynamics(i, pr_flip=0, bias_bounds=[0,0])
         all_rewards.append(rewards)
         all_actions.append(actions)
         all_alpha_hats.append(alpha_hats)
@@ -436,9 +362,9 @@ def generate_plots():
 
     # self-contained plots
     plot_order_of_utilities()
-    plot_cumulative_avg_utility_per_noise_interval(noise_interval=0.1) 
+    plot_cumulative_avg_utility_per_bias_interval(bias_interval=0.1) 
+    #plot_utilities_per_bias_interval(bias_interval=0.1)
     #plot_flip_effect()
-    #plot_utilities_per_noise_interval(noise_interval=0.25)
     
     all_rewards, all_actions, all_alpha_hats, all_alphas, all_dynamics = create_all_dynamics()
     plot_utilities(all_rewards, all_dynamics)
@@ -448,7 +374,7 @@ def generate_plots():
 
 if __name__=='__main__':
     # Fix randomness
-    seed = 0
+    seed = 1
     np.random.seed(seed)
     random.seed(seed)
     

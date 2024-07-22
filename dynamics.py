@@ -1,16 +1,14 @@
-import math
 import random
 import matplotlib.pyplot as plt
 import numpy as np
-import pulp
 import copy
 import pickle
 import pdb
-
+import math
 
 class Game:
     def __init__(self):
-        self.is_contextual = False
+        return
 
     def rewards_from_actions(self, actions):
         return ([0])
@@ -29,7 +27,9 @@ class Game:
 
     def min_rewards(self):
         return ([0])
-
+    
+    def num_estimators(self):
+        return (1)
 
 # The price discrimination game: this is a game between a buyer and a seller 
 # There are two types of buyers. The buyer's type is randomly picked at the beginning by nature
@@ -42,12 +42,14 @@ class Game:
 # The seller gets reward of the price set if the buyer buys and zero otherwise.
 # The buyer gets reward value minus price if they buy and zero otherwise. 
 class PriceDiscriminationGame(Game):
-    def __init__(self, pr_high=0.5, v_high=15, v_low=5, cost=5):
+    def __init__(self, pr_high, v_high, v_low, cost, n, T):
         super().__init__()
         self.pr_high = pr_high
         self.v_high = v_high
         self.v_low = v_low
         self.cost_evade = cost
+        self.n = n
+        self.T = T
 
     # players are nature,buyer, seller
     def num_players(self):
@@ -83,65 +85,75 @@ class PriceDiscriminationGame(Game):
     # (4) 0: buyer buys, 1: buyer does not buy
 
     # The following functions denote the value the action is set to in the action vector
-    def val_high_val_sig(self):
+    def val_high_sig(self):
         return (0)
 
-    def val_low_val_sig(self):
+    def val_low_sig(self):
         return (1)
 
-    def val_high_val_buyer(self):
+    def val_high_buyer(self):
         return (0)
 
-    def val_low_val_buyer(self):
+    def val_low_buyer(self):
         return (1)
 
-    def val_buys(self):
+    def val_high_price(self):
+        return (1)
+
+    def val_low_price(self):
         return (0)
+
+    def val_buy(self):
+        return (0)
+    
+    def val_not_buy(self):
+        return (1)
 
     # The following functions look at the action vector and return the truth value of
     # various attributes of the action vector
-    def is_high_value_buyer(self, actions):
-        return (actions[0] == 0)
+    def is_high_val_buyer(self, actions, buyer_idx):
+        return (actions[0][buyer_idx] == 0)
 
-    def is_truthful_signalling(self, actions):
-        return (actions[0] == actions[1])
+    def is_truthful_signalling(self, actions, buyer_idx):
+        return (actions[0][buyer_idx] == actions[1][buyer_idx])
 
-    def is_low_price(self, actions):
-        return (actions[2] == 0)
+    def is_low_price(self, actions, buyer_idx):
+        return (actions[2][buyer_idx] == 0)
+    
+    def is_low_signal(self, actions, buyer_idx):
+        return (actions[1][buyer_idx] == 1)
 
-    def buyer_buys(self, actions):
-        return (actions[3] == 0)
+    def buyer_buys(self, actions, buyer_idx):
+        return (actions[3][buyer_idx] == 0)
 
-    # Returns rewards of each player given the action vector
+    # Returns rewards of each player given the action vectorx
     def rewards_from_actions(self, actions):
-        reward_nature = 0
-        high_value = self.is_high_value_buyer(actions)
-        signal_truthful = self.is_truthful_signalling(actions)
-        low_price = self.is_low_price(actions)
-        buys = self.buyer_buys(actions)
+        num_buyers = len(actions[0])
+        r_n = np.zeros(num_buyers)
+        r_b = np.zeros(num_buyers)
+        r_s = np.zeros(num_buyers)
+        for j in range(num_buyers):
+            high_value = self.is_high_val_buyer(actions, j)
+            signal_truthful = self.is_truthful_signalling(actions, j)
+            low_price = self.is_low_price(actions, j)
+            buys = self.buyer_buys(actions, j)
 
-        r_b = 0.0
-        r_s = 0.0
-        if (not signal_truthful):
-            r_b -= self.cost_evade
-            r_s -= self.cost_evade
+            if (not signal_truthful):
+                r_b[j] -= self.cost_evade
+                r_s[j] -= self.cost_evade
 
-        if (buys):
-            if (low_price):
-                r_s += self.v_low
-                if (high_value):
-                    r_b += (self.v_high - self.v_low)
-            else:
-                r_s += self.v_high
-                if (not high_value):
-                    r_b -= (self.v_high - self.v_low)
-
-        rewards = []
-        if (high_value):
-            rewards = [reward_nature, r_b, r_s]
-        else:
-            rewards = [reward_nature, r_b, r_s]
-
+            if (buys):
+                if (low_price):
+                    r_s[j] += self.v_low
+                    if (high_value):
+                        r_b[j] += (self.v_high - self.v_low)
+                else:
+                    r_s[j] += self.v_high
+        
+        r_n = np.mean(r_n)
+        r_b = np.mean(r_b)
+        r_s = np.mean(r_s)
+        rewards = [r_n, r_b, r_s]
         return (rewards)
 
     # Returns maximum reward each player can get
@@ -162,90 +174,62 @@ class PriceDiscriminationGame(Game):
     # The seller sets price v_high when seeing the high value signal
     # The seller sets price v_low when seeing the low value signal
 
-    # Returns the probability with which buyer with value v_high signals untruthfully in the SBPNE
-    def eq_strat_high_value_buyer(self):
-        if (self.cost_evade >= (self.v_high - self.v_low)):
+    # Returns the probability with which the high-value buyer signals
+    # untruthfully in the SBPNE when alpha is greater than alpha*
+    def q_star(self):
+        return min(1, ((1 - self.pr_high) * self.v_low) / (self.pr_high * (self.v_high - self.v_low)))
+
+    # Returns the probability with which the high-value buyer signals untruthfully in the SBPNE
+    def prob_evade_high_val_buyer(self, alpha):
+        if alpha <= self.cost_evade / (self.v_high - self.v_low):
             return (0)
-        pr_high = self.pr_high
-        v_low = self.v_low
-        v_high = self.v_high
-        return ((1 - pr_high) * v_low) / (pr_high * (v_high - v_low))
+        else:
+            return self.q_star()
 
-    # Returns the utility of the seller in the SBPNE
-    def eq_utility_seller(self):
-        strat = self.eq_strat_high_value_buyer()
-        pr_false_signal = self.pr_high * strat
-        u = -(pr_false_signal * self.cost_evade)
-        pr_buy_low_price = (1 - self.pr_high) + (self.pr_high * strat)
-        pr_buy_high_price = self.pr_high * (1 - strat)
-        u += ((pr_buy_high_price * self.v_high) + (pr_buy_low_price * self.v_low))
-        return (u)
+    # Returns buyer's equilibrium strategy in the one-stage game
+    def buyer_eq_strat(self, buyer_val, alpha):
+        low_buyer_val = self.val_low_buyer()
+        high_buyer_val = self.val_high_buyer()
 
-    # Returns the utility of the buyer in the SBPNE
-    def eq_utility_buyer(self):
-        strat = self.eq_strat_high_value_buyer()
-        u_lying = (self.v_high - self.v_low) - self.cost_evade
-        return (self.pr_high * strat * u_lying)
-
-    # Game without price discrimination: consisits of the same interactions, except that
-    # the seller cannot set the price based on the signal.
-    # So the buyer never signals untruthfully when there is no price discrimination.
-
-    # Returns the seller's utility when there is no price discrimination
-    def utility_without_pd_seller(self):
-        utility_low_price = self.v_low
-        utility_high_price = (self.pr_high * self.v_high)
-        return (max(utility_low_price, utility_high_price))
-
-    # Returns the buyer's utility when there is no price discrimination
-    def utility_without_pd_buyer(self):
-        price = self.v_low
-        if (self.pr_high * self.v_high > self.v_low):
-            price = self.v_high
-        return (self.pr_high * (self.v_high - price))
-
-    # Returns a CCE of the game
-    def compute_CCE(self):
-        problem = pulp.LpProblem("LP Problem", pulp.LpMinimize)
-        p00 = pulp.LpVariable('p00', lowBound=0)
-        p01 = pulp.LpVariable('p01', lowBound=0)
-        p10 = pulp.LpVariable('p10', lowBound=0)
-        p11 = pulp.LpVariable('p11', lowBound=0)
-        objective = p00 + p01
-        problem += objective
-        constr0 = p00 + p01 + p10 + p11 <= 1
-        constr1 = p00 + p01 + p10 + p11 >= 1
-        constr2 = p00 * (self.pr_high * self.v_high - self.v_low) <= p10 * (1.0 - self.pr_high) * self.v_low
-        constr3 = p11 * (1.0 - self.pr_high) * self.v_low <= p01 * ((self.pr_high * self.v_high) - self.v_low)
-        constr4 = p10 * (self.v_high - self.v_low - self.cost_evade) <= p11 * self.cost_evade
-        constr5 = p01 * self.cost_evade <= p00 * (self.v_high - self.v_low - self.cost_evade)
-        problem += constr0
-        problem += constr1
-        problem += constr2
-        problem += constr3
-        problem += constr4
-        problem += constr5
-        problem.solve()
-        p00_val = p00.value()
-        p01_val = p01.value()
-        p10_val = p10.value()
-        p11_val = p11.value()
-        return ([p00_val, p01_val, p10_val, p11_val])
-
-
-# Returns the cumulative average of a list
-def cumulative_average(l):
-    cumulative_sum = 0
-    cumulative_count = 0
-    cumulative_average = []
-
-    for num in l:
-        cumulative_sum += num
-        cumulative_count += 1
-        cumulative_average.append(cumulative_sum / cumulative_count)
-
-    return (cumulative_average)
-
+        if buyer_val == self.val_low_buyer():
+            signal = buyer_val
+        else:
+            if alpha <= self.cost_evade / (self.v_high - self.v_low):
+                signal = buyer_val
+            else:
+                signal = random.choices([low_buyer_val, buyer_val], [self.q_star(), 1 - self.q_star()])[0]
+        return signal
+    
+    # Returns seller/buyer alpha-PD utilities
+    def eq_utility(self, player_type, alpha):
+        q = self.q_star()
+        if player_type == 'Seller':
+            if self.v_low >= self.pr_high * self.v_high:
+                if alpha <= self.cost_evade / (self.v_high - self.v_low):
+                    u = self.v_low + (alpha * self.pr_high * (self.v_high - self.v_low))
+                else:
+                    u = self.v_low - (self.pr_high * self.cost_evade)
+            else:
+                if alpha <= self.cost_evade/(self.v_high - self.v_low):
+                    u = (self.pr_high * self.v_high) + (alpha * (1 - self.pr_high) * self.v_low)
+                else:
+                    u = (self.pr_high * (self.v_high - self.cost_evade * q) + 
+                         alpha * ((1 - self.pr_high) * self.v_low - 
+                         self.pr_high * (self.v_high - self.v_low) * q))
+        
+        else:
+            pr_high = 1 if player_type == 'High Value Buyer' else self.pr_high
+            if self.v_low >= self.pr_high * self.v_high:
+                if alpha <= self.cost_evade/(self.v_high - self.v_low):
+                    u = pr_high * ((1 - alpha) * (self.v_high - self.v_low))
+                else:
+                    u = pr_high * ((self.v_high - self.v_low) - self.cost_evade)
+            else:
+                if alpha <= self.cost_evade/(self.v_high - self.v_low):
+                    u = 0
+                else:
+                    u = pr_high * ((-self.cost_evade * q) + (alpha * (self.v_high - self.v_low) * q))
+        return u
 
 # When a game is played repeatedly, the dynamics are captured by the following Dynamics classes
 
@@ -258,24 +242,45 @@ class GameDynamics:
         self.num_players = game.num_players()
         self.num_interactions = game.num_interactions()
         self.dynamics = dynamics
+        self.T = self.game.T
 
     # Runs player dyamics for T rounds and returns rewards accumulated in each round
-    def run(self, T):
-        rewards = np.zeros((self.num_players, T))
+    def run(self, price_strat):
+        rewards = np.zeros((self.num_players, self.T))
         actions = []
-        for t in range(T):
+        alpha_hats = []
+        alphas = []
+        for t in range(self.T):
+            if t % 10000 == 0:
+                print('t',t)
+            
+            # players take an actions
             prev_player_actions = []
             for i in range(self.num_interactions):
                 a = self.dynamics[i].next_action(prev_player_actions)
                 prev_player_actions.append(a)
+            actions.append(prev_player_actions)
+            
+            # compute rewards for nature, seller, and buyer
             r = self.game.rewards_from_actions(prev_player_actions)
+            
+            # update player parameters
             for i in range(self.num_interactions):
-                x = self.dynamics[i].reward_and_update(prev_player_actions)
+                updated_param = self.dynamics[i].update(prev_player_actions)
+                if isinstance(self.dynamics[i], signalDynamic):
+                    alpha_hats.append(updated_param)
+                if isinstance(self.dynamics[i], priceDynamic):
+                    if price_strat == 'Exp3':
+                        alpha = 0
+                    elif price_strat == '$\\alpha^*$-PD':
+                        alpha = updated_param[0]
+                    elif price_strat == 'CExp3':
+                        alpha = ((updated_param[0][0] * updated_param[1][1]) +
+                                 (updated_param[0][1] * updated_param[1][0]))
+                    alphas.append(alpha)
             for p in range(self.num_players):
                 rewards[p][t] = r[p]
-            actions.append(prev_player_actions)
-        return actions, rewards
-
+        return rewards, actions, alpha_hats, alphas
 
 # Captures the algorithm used for a given interaction in the game. 
 # Attributes:
@@ -285,17 +290,17 @@ class GameDynamics:
 # Methods:
 #	next_action: based on the history (games played up to this point) and the actions in the current
 #					game from previous interactions, the action the player takes in the current interaction
-#	reward_and_update: takes player_actions and updates the history and hence the states of the dynamics
+#	update: takes player_actions and updates the history and hence the states of the dynamics
 class PlayerDynamic:
-    def __init__(self, g, i, p, T=10000):
+    def __init__(self, g, i, p, player_args):
         self.game = g
-        self.player_ind = p
         self.interaction_ind = i
+        self.player_ind = p
         self.num_actions = g.num_actions_per_interaction(i)
-        self.num_rounds = T
+        self.player_args = player_args
 
-    def reward_and_update(self, player_actions):
-        return (self.game.rewards_from_actions(player_actions))
+    def update(self, player_actions):
+        return
 
     def next_action(self, prev_player_actions):
         return (0)
@@ -309,7 +314,7 @@ class PlayerDynamic:
             rewards[t] = self.game.rewards_from_actions(actions[t])[self.player_ind]
             actions_bl = actions_for_baseline[t]
             for a in range(self.num_actions):
-                actions_bl[self.interaction_ind] = a
+                actions_bl[self.interaction_ind] = [a for _ in range(self.game.n)]
                 rewards_baseline[a][t] = self.game.rewards_from_actions(actions_bl)[self.player_ind]
 
         avg_cum_rewards = cumulative_average(rewards.tolist())
@@ -320,127 +325,208 @@ class PlayerDynamic:
         avg_cum_regret = np.zeros(T)
         for t in range(T):
             m = -np.inf
-            for a in range(self.num_arms):
+            for a in range(self.num_actions):
                 if (avg_cum_baseline_rewards[a][t] > m):
                     m = avg_cum_baseline_rewards[a][t]
             avg_cum_regret[t] = max(0, m - avg_cum_rewards[t])
 
-        # with open('avg_cum_baseline_rewards.pkl', 'wb') as file:
-        #     pickle.dump(avg_cum_baseline_rewards, file)
-        #
-        # with open('avg_cum_regret.pkl', 'wb') as file:
-        #     pickle.dump(avg_cum_regret, file)
-        #
-        # with open('avg_cum_rewards.pkl', 'wb') as file:
-        #     pickle.dump(avg_cum_rewards, file)
-
         return (avg_cum_regret)
 
+'''
+Player Strategies
+'''
+class ContextualDynamic(PlayerDynamic):
+    def __init__(self, g, i, p, strategy_name, num_dynamics, player_args, contexts):
+        super().__init__(g, i, p, player_args)
+        self.num_dynamics = num_dynamics
+        self.context_inds = contexts['inds']
+        self._initialize_dynamics(strategy_name)
+        self.player_args = player_args
+        self.assignments = None
+        if contexts['function']:
+            self.contextual_function = eval(contexts['function'])
 
-# Implementation of EXP3_S algorithm from the paper 'Nonstochastic MAB problem' - Auer et al.
-# Guaranteed to have worst case sublinear regret against adversarial sequences
-class EXP3_S(PlayerDynamic):
-    def __init__(self, g, i, p):
-        super().__init__(g, i, p)
-        self.num_arms = self.num_actions
-        self.weights = np.ones(self.num_arms)
-        self.time_step = 1
-        self.eta = np.sqrt(np.log(self.num_arms) / (self.num_arms * 2))
-        self.current_horizon = 2
+    def _initialize_dynamics(self, strategy_name):
+        class_name = globals()[strategy_name]
+        args = [self.game, self.interaction_ind, self.player_ind, self.player_args]
+        strategy_dynamics = []
+        for i in range(self.num_dynamics):
+            strategy_dynamics.append(class_name(*args))
+        self.dynamics = strategy_dynamics
 
-    def get_probabilities(self):
-        total_weight = np.sum(self.weights)
-        probs = self.weights / total_weight
-        return probs
+    def _assign_estimators(self, prev_player_actions):
+        num_estimators = self.player_args['num_estimators']
+        pr_estimators = self.player_args['prob_estimators']
+        assignments = [[] for _ in range(num_estimators)]
+        for j in range(self.game.n):
+            choice = random.choices(range(num_estimators), pr_estimators)[0]
+            assignments[choice].append(j)
+        return assignments
+
+    def _assign_dynamics(self, prev_player_actions):
+        context_actions = [prev_player_actions[i] for i in self.context_inds][0]
+        unique_actions = self.game.num_actions_per_interaction(self.interaction_ind) 
+        assignments = [[] for _ in range(unique_actions)]
+        for action in range(unique_actions):
+            dynamic_idxs = list(np.where(np.array(context_actions)==action)[0])
+            assignments[action] = dynamic_idxs
+        return assignments
+
+    def _make_contextual_assignments(self, prev_player_actions):
+        assignments = self.contextual_function(prev_player_actions)
+        self.assignments = assignments
 
     def next_action(self, prev_player_actions):
-        probs = self.get_probabilities()
-        return np.random.choice(self.num_arms, p=probs)
+        if self.num_dynamics==1:
+            self.assignments = [list(np.arange(self.game.n))]
+            actions = self.dynamics[0].next_action(prev_player_actions)
+        else:
+            actions = np.zeros(self.game.n).astype(np.int32)
+            self._make_contextual_assignments(prev_player_actions)
+            for i in range(self.num_dynamics):
+                if not self.assignments[i]:
+                    continue
+                prev_actions_per_dynamic = list(map(lambda x:
+                                                    list(np.array(x)[self.assignments[i]]),
+                                                    prev_player_actions))
+                actions_per_dynamic = self.dynamics[i].next_action(prev_actions_per_dynamic)
+                actions[self.assignments[i]] = actions_per_dynamic
+        return actions
 
-    # Normalize rewards to lie in [0,1]
-    def normalized_reward(self, r):
-        max_rewards = self.game.max_rewards()
-        min_rewards = self.game.min_rewards()
-        l = min_rewards[self.player_ind]
-        h = max_rewards[self.player_ind]
-        return ((r - l) / (h - l))
+    def update(self, player_actions):
+        updated_params = []
+        for i in range(self.num_dynamics):
+            actions_per_dynamic = list(map(lambda x: list(np.array(x)[self.assignments[i]]), player_actions))
+            updated_param = self.dynamics[i].update(actions_per_dynamic)
+            updated_params.append(updated_param)
+        return updated_params
 
-    def reward_and_update(self, player_actions):
-        probs = self.get_probabilities()
-        arm = player_actions[self.interaction_ind]
-        r = self.game.rewards_from_actions(player_actions)[self.player_ind]
-        reward = self.normalized_reward(r)
-        estimated_reward = reward / probs[arm]
+'''
+Nature's Strategy
+'''
 
-        self.weights[arm] *= np.exp(self.eta * estimated_reward)
+# Strategy that randomly selects buyer's type
+class randomSelection(PlayerDynamic):
+    def __init__(self, g, i, p, player_args):
+        super().__init__(g, i, p, player_args)
 
-        self.time_step += 1
-        if self.time_step > self.current_horizon:
-            # If we've passed the current horizon, reset the weights and double the horizon
-            self.weights = np.ones(self.num_arms)
-            self.current_horizon *= 2
-            self.eta = np.sqrt(np.log(self.num_arms) / (self.num_arms * 2 * self.current_horizon))
+    def next_action(self, prev_player_actions):
+        high_buyer = self.game.val_high_buyer()
+        low_buyer = self.game.val_low_buyer()
+        actions = []
+        for j in range(self.game.n):
+            action = random.choices([low_buyer, high_buyer], [1 - self.game.pr_high, self.game.pr_high])[0]
+            actions.append(action)
+        return actions
 
+    def update(self, prev_player_actions):
+        return
 
+class natureDynamic(ContextualDynamic):
+    def __init__(self, g, i, p, strategy_name, num_dynamics, player_args, contexts):
+        super().__init__(g, i, p, strategy_name, num_dynamics, player_args, contexts)
+
+'''
+Signal Strategies
+'''
+# Buyer's signaling strategy with a consistent estimator of seller's probability of price discrimination at each round
+class consistentEstimate(PlayerDynamic):
+    def __init__(self, g, i, p, player_args):
+        super().__init__(g, i, p, player_args)
+        self.price_per_action = np.zeros(self.num_actions)
+        self.num_each_action = np.zeros(self.num_actions)
+        self.num_rounds = 1
+        self.alpha_hat = 0.5
+        self.normalized_num_rounds_pd = 0
+        self.player_args = player_args
+        self.pr_flip = self.player_args['pr_flip']
+        self.bias_bounds = self.player_args['bias_bounds']
+        self.bias = 0.0
+        self.round = 1
+    
+    def flip_action(self, action):
+        opposite_action = self.game.val_high_sig() if action==self.game.val_low_sig() else self.game.val_low_sig()
+        choice = random.choices([action, opposite_action], [1 - self.pr_flip, self.pr_flip])[0]
+        return choice
+
+    def next_action(self, prev_player_actions):
+        buyer_vals = prev_player_actions[self.interaction_ind - 1]
+        num_buyers = len(buyer_vals)
+        actions = []
+        for j in range(num_buyers):
+            buyer_val = buyer_vals[j]
+            action = self.game.buyer_eq_strat(buyer_val, self.alpha_hat)
+            if buyer_val == self.game.val_high_buyer():
+                action = self.flip_action(action)
+            actions.append(action)
+        return actions
+
+    def update(self, player_actions):
+        
+        low_sig = self.game.val_low_sig()
+        high_sig = self.game.val_high_sig()
+        low_price = self.game.val_low_price()
+        high_price = self.game.val_high_price()
+
+        signal_ind = self.interaction_ind
+        price_ind = self.interaction_ind + 1
+        
+        self.num_rounds += 1
+        round_is_inf = 1 if (0 in player_actions[signal_ind] and 1 in player_actions[signal_ind]) else 0
+        if round_is_inf:
+            price_for_low_sig = player_actions[price_ind][player_actions[signal_ind].index(low_sig)]
+            price_for_high_sig = player_actions[price_ind][player_actions[signal_ind].index(high_sig)]
+            pd_detected = 1 if price_for_low_sig != price_for_high_sig else 0
+            
+            prob_all_low_signals = (((1 - self.game.pr_high) +  
+                                      self.game.pr_high
+                                     * self.game.prob_evade_high_val_buyer(self.alpha_hat)) ** self.game.n)
+            prob_all_high_signals = (self.game.pr_high * (1 - self.game.prob_evade_high_val_buyer(self.alpha_hat))) ** self.game.n
+            prob_round_is_inf = 1 - (prob_all_low_signals + prob_all_high_signals)
+            self.normalized_num_rounds_pd += ((pd_detected * round_is_inf) / prob_round_is_inf) 
+        true_alpha_hat = self.normalized_num_rounds_pd / self.num_rounds
+        bias = np.random.uniform(*self.bias_bounds)
+        self.alpha_hat = min(1, max(true_alpha_hat + bias, 0))
+        return self.alpha_hat
+
+class signalDynamic(ContextualDynamic):
+    def __init__(self, g, i, p, strategy_name, num_dynamics, player_args, contexts):
+        super().__init__(g, i, p, strategy_name, num_dynamics, player_args, contexts)
+
+'''
+Price Strategies
+'''
+
+# alpha-PD strategy
+class alphaPD(PlayerDynamic):
+    def __init__(self, g, i, p, player_args):
+        super().__init__(g, i, p, player_args)
+        self.player_args = player_args
+        self.alpha = self.player_args['alpha']
+
+    def next_action(self, prev_player_actions):
+        low_price = self.game.val_low_price()
+        high_price = self.game.val_high_price()
+        pd = random.choices([0, 1], [1 - self.alpha, self.alpha])[0]
+        if pd==1:
+            actions = [low_price if self.game.is_low_signal(prev_player_actions, j) else high_price for j in range(self.game.n)]
+        else:
+            actions = [low_price if self.game.v_low >= self.game.pr_high * self.game.v_high else high_price for _ in range(self.game.n)]
+        return actions
+    
+    def update(self, prev_player_actions):
+        return self.alpha
+
+# Implemention of EXP3-IX from Chapter 12 of Bandits book by Szepesvari and Lattimore
 class Exp3(PlayerDynamic):
-    def __init__(self, g, i, p):
-        super().__init__(g, i, p)
-        self.num_arms = self.num_actions
-        self.weights = [1.0] * self.num_arms
-        self.total_reward = 0.0
-        self.t = 1
-        self.gamma_t = 0.1
-
-    def get_probabilities(self):
-        total_weight = np.sum(self.weights)
-        probs = (1 - self.gamma_t) * (self.weights / total_weight) + self.gamma_t / self.num_arms
-        return probs
-
-    def next_action(self, prev_player_actions):
-        self.gamma_t = math.sqrt(math.log(self.num_arms)) / self.t
-        probs = self.get_probabilities()
-        return (self._weighted_choice(probs))
-
-    def normalized_reward(self, r):
-        max_rewards = self.game.max_rewards()
-        min_rewards = self.game.min_rewards()
-        l = min_rewards[self.player_ind]
-        h = max_rewards[self.player_ind]
-        return ((r - l) / (h - l))
-
-    def reward_and_update(self, player_actions):
-        p_ind = self.player_ind
-        arm = player_actions[self.interaction_ind]
-        r = self.game.rewards_from_actions(player_actions)[p_ind]
-        reward = self.normalized_reward(r)
-        self.total_reward += reward
-        self.t += 1
-        if (self.weights[arm] > 0 or True):
-            estimated_reward = reward / self.weights[arm]
-            self.weights[arm] *= math.exp((1 - self.gamma_t) * estimated_reward / self.num_arms)
-        return (reward)
-
-    def _weighted_choice(self, probs, c=0):
-        total_weight = sum(probs)
-        rnd = total_weight * random.random()
-        for i, p in enumerate(probs):
-            rnd -= p
-            if rnd < 0:
-                return i
-
-
-# Implementation of EXP3-IX from Chapter 12 of Bandits book by Szepesvari and Lattimore
-class EXP3_IX(PlayerDynamic):
-    def __init__(self, g, i, p, T=10000):
-        super().__init__(g, i, p, T)
+    def __init__(self, g, i, p, player_args):
+        super().__init__(g, i, p, player_args)
         self.num_arms = self.num_actions
         self.weights = [1.0] * self.num_arms
         self.t = 1
-        self.eta = np.sqrt(2 * np.log(self.num_arms + 1) / (self.num_rounds * self.num_arms))
-        self.gamma = self.eta / 2
-        # self.eta = np.sqrt(np.log(self.num_arms) / (self.num_rounds * self.num_arms))
-        # self.gamma = 0
-
+        self.eta = np.sqrt(np.log(self.num_arms) / (self.game.T * self.num_arms))
+        self.gamma = 0
+        self.probabilities = self.get_probabilities()
 
     def get_probabilities(self):
         total_weight = np.sum(self.weights)
@@ -449,8 +535,12 @@ class EXP3_IX(PlayerDynamic):
 
     def next_action(self, prev_player_actions):
         probs = self.get_probabilities()
+        # this ensures buyer utility converges to alpha=1 in CExp3
+        #if 0 not in prev_player_actions[1]:
+        #    probs = [1, 0]
         action = random.choices(range(self.num_arms), probs)[0]
-        return action
+        num_buyers = np.shape(prev_player_actions)[1]
+        return [action] * num_buyers
 
     def normalized_reward(self, r):
         max_rewards = self.game.max_rewards()
@@ -459,339 +549,68 @@ class EXP3_IX(PlayerDynamic):
         h = max_rewards[self.player_ind]
         return (r - l) / (h - l)
 
-    def reward_and_update(self, player_actions):
-        p_ind = self.player_ind
-        arm = player_actions[self.interaction_ind]
-        r = self.game.rewards_from_actions(player_actions)[p_ind]
-        reward = self.normalized_reward(r)
-        loss = 1.0 - reward
-        prob = self.get_probabilities()[arm]
-        estimated_loss = loss / (prob + self.gamma)
-        self.weights[arm] *= math.exp(-self.eta * estimated_loss)
-        # estimated_reward = 1.0 - (loss / (prob + self.gamma))
-        # self.weights[arm] *= math.exp(self.eta * estimated_reward)
-        self.t += 1
-        return reward
+    def update(self, player_actions):
+        if not any(player_actions):
+            reward = None
+        else:
+            p_ind = self.player_ind
+            arm = player_actions[self.interaction_ind][0]
+            r = self.game.rewards_from_actions(player_actions)[p_ind]
+            reward = self.normalized_reward(r)
+            loss = 1.0 - reward
+            prob = self.get_probabilities()[arm]
+            estimated_loss = loss / (prob + self.gamma)
+            self.weights[arm] *= math.exp(-self.eta * estimated_loss)
+            self.t += 1
+        return self.get_probabilities()
 
+class priceDynamic(ContextualDynamic):
+    def __init__(self, g, i, p, strategy_name, num_dynamics, player_args, contexts):
+        super().__init__(g, i, p, strategy_name, num_dynamics, player_args, contexts)
 
-class ContextualDynamic(PlayerDynamic):
-    def __init__(self, g, i, p, c_inds, dynamic_name):
-        super().__init__(g, i, p)
-        self.context_inds = c_inds
-        self.num_contexts = self._num_contexts()
-        self._initialize_dynamic_per_context(dynamic_name)
-
-    def _num_contexts(self):
-        n = 1
-        for i in self.context_inds:
-            num_actions = self.game.num_actions_per_interaction(i)
-            n *= num_actions
-        return (n)
-
-    def _initialize_dynamic_per_context(self, dynamic_name):
-        contexts_shape = [self.game.num_actions_per_interaction(i) for i in self.context_inds]
-        class_name = globals()[dynamic_name]
-        args = [self.game, self.interaction_ind, self.player_ind]
-
-        def create_array(depth):
-            if depth == len(contexts_shape):
-                return (class_name(*args))
-            arr = np.empty(contexts_shape[depth], dtype=object)
-
-            for i in range(contexts_shape[depth]):
-                arr[i] = create_array(depth + 1)
-
-            return (arr)
-
-        self.dynamics = create_array(0)
-
-    def _dynamic_from_player_actions(self, a):
-        contexts = [a[i] for i in self.context_inds]
-        d = self.dynamics[tuple(contexts)]
-        return (d)
+'''
+Buy Strategy
+'''
+# Buyer's buying strategy -- buyer buys when value is at least price
+class buyUnderValue(PlayerDynamic):
+    def __init__(self, g, i, p, player_args):
+        super().__init__(g, i, p, player_args)
 
     def next_action(self, prev_player_actions):
-        d = self._dynamic_from_player_actions(prev_player_actions)
-        return (d.next_action(prev_player_actions))
+        prices = prev_player_actions[self.interaction_ind - 1]
+        low_price = self.game.val_low_price()
+        high_price = self.game.val_high_price()
+        buy = self.game.val_buy()
+        not_buy = self.game.val_not_buy()
 
-    def reward_and_update(self, player_actions):
-        d = self._dynamic_from_player_actions(player_actions)
-        return (d.reward_and_update(player_actions))
+        actions = []
+        for j in range(self.game.n):
+            if prices[j] == low_price:
+                action = buy
+            else:
+                action = buy if self.game.is_high_val_buyer(prev_player_actions, j) else not_buy
+            actions.append(action)
+        return actions
 
+    def update(self, prev_player_actions):
+        return
 
-def base_n_to_decimal(number_list, n):
-    decimal_number = 0
-    power = 0
+class buyDynamic(ContextualDynamic):
+    def __init__(self, g, i, p, strategy_name, num_dynamics, player_args, contexts):
+        super().__init__(g, i, p, strategy_name, num_dynamics, player_args, contexts)
 
-    for digit in reversed(number_list):
-        decimal_number += digit * (digit ** power)
-        power += 1
+'''
+Helper Functions
+'''
+# Returns the cumulative average of a list
+def cumulative_average(l):
+    cumulative_sum = 0
+    cumulative_count = 0
+    cumulative_average = []
 
-    return (decimal_number)
+    for num in l:
+        cumulative_sum += num
+        cumulative_count += 1
+        cumulative_average.append(cumulative_sum / cumulative_count)
 
-
-def decimal_to_base_n(decimal_number, n):
-    if decimal_number == 0:
-        return ([0])
-
-    result = []
-    while (decimal_number > 0):
-        remainder = decimal_number % n
-        result.insert(0, remainder)
-        decimal_number //= n
-
-    return (result)
-
-
-# create a modified game where the actions are mappings
-# from contexts to the actions of the original game g
-# contexts_per_player[i] is the list of indices of actions
-# the player making action i has access to when taking action
-# the new action this player takes is a mapping from realizations
-# of contexts_per_player[i] to an action
-class GameWithContextualActions(Game):
-    def __init__(self, g, contexts_per_interaction):
-        super().__init__()
-        self.contexts_per_interaction = contexts_per_interaction
-        self.base_game = g
-        self.is_contextual = True
-
-    def num_players(self):
-        return self.base_game.num_players()
-
-    def num_interactions(self):
-        return self.base_game.num_interactions()
-
-    def max_rewards(self):
-        return self.base_game.max_rewards()
-
-    def min_rewards(self):
-        return self.base_game.min_rewards()
-
-    def num_context_realizations(self, ind):
-        contexts = self.contexts_per_interaction[ind]
-        n = 1
-        for c in contexts:
-            n *= self.base_game.num_actions_per_interaction(c)
-        return int(n)
-
-    def num_actions_per_interaction(self, ind):
-        a = self.base_game.num_actions_per_interaction(ind)
-        n = self.num_context_realizations(ind)
-        return pow(a, n)
-
-    def _context_vals_to_ind(self, c_inds, c_vals):
-        if len(c_inds) == 0:
-            return 0
-        r = 0
-        p = 1
-        for i in range(len(c_inds)):
-            ind = c_inds[i]
-            n = self.contexts_per_interaction[ind]
-            v = c_vals[i]
-            r += (p * v)
-            p *= n
-
-        return int(r)
-
-    def _ind_to_context_vals(self, ind, c_inds):
-        r = []
-        p = 1
-        a = ind
-        for c in c_inds:
-            n = self.contexts_per_interaction[c]
-            v = a % n
-            a //= n
-            r.append(v)
-
-        return r
-
-    # Take action in this game and it's interaction index and maps to the corresponding mapping in the base game
-    # The mapping in the base game is a mapping from values of the context indices to a an action in the base game
-    # at the interaction index
-    def action_to_base_game_mapping(self, action, int_ind, context_vals):
-        num_contexts = self.num_context_realizations(int_ind)
-        contexts = self.contexts_per_interaction[int_ind]
-        num_actions_base_game = self.base_game.num_actions_per_interaction(int_ind)
-        action_vals = decimal_to_base_n(action, num_actions_base_game)
-        # since action_vals is the mapping applied to all possible contexts,
-        # it needs to be of length num_contexts.
-        # so we will pad the front of action_vals with sufficient zeros
-        l = len(action_vals)
-        for i in range(num_contexts - l):
-            action_vals.insert(0, 0)
-        context_vals_ind = self._context_vals_to_ind(contexts, context_vals)
-        realized_action = action_vals[context_vals_ind]
-        return realized_action
-
-    # given the action index action in the new game
-    # and the values of the context inds c_vals,
-    # finds the action in the base game
-    def actions_base_game(self, action_profile):
-        num_ints = len(action_profile)
-        realized_action_profile = []
-        for i in range(num_ints):
-            a = action_profile[i]
-            contexts = self.contexts_per_interaction[i]
-            context_vals = []
-            for c in contexts:
-                context_vals.append(realized_action_profile[c])
-
-            realized_action = self.action_to_base_game_mapping(a, i, context_vals)
-            realized_action_profile.append(realized_action)
-        return realized_action_profile
-
-    def rewards_from_actions(self, actions):
-        realized_actions = self.actions_base_game(actions)
-        rewards = self.base_game.rewards_from_actions(realized_actions)
-        return rewards
-
-
-class ContextualExp3(ContextualDynamic):
-    def __init__(self, g, i, p, c_inds):
-        super().__init__(g, i, p, c_inds, 'EXP3_S')
-
-
-# Strategy that randomly picks an action according to the attribute probs
-class randomStrategy(PlayerDynamic):
-    def __init__(self, g, i, p, probs=[]):
-        super().__init__(g, i, p)
-        self.probs = probs
-
-    def next_action(self, prev_player_actions):
-        elements = range(self.num_actions)
-        action = random.choices(elements, self.probs)[0]
-        return (action)
-
-
-# Dynamic for the buyer in the price-discrimination game where the buyer checks if the seller uses the signal to price discriminate.
-# Detect price discrimination if the difference in average price for the different signals are greater than the attribute tol
-# If no price discrimination determined, the buyer signals truthfully
-# If price discrimination determined, the buyer plays the SPBNE strategy
-class checkForSignalsUsage(PlayerDynamic):
-    def __init__(self, g, i, p, tol=1, is_contextual=False):
-        super().__init__(g, i, p)
-        self.tol = tol
-        self.price_per_action = np.zeros(self.num_actions)
-        self.num_each_action = np.zeros(self.num_actions)
-        self.contextual = is_contextual
-        self.contextual_game = None
-        if is_contextual:
-            self.game = g.base_game
-            self.contextual_game = g
-
-    def next_action(self, prev_player_actions_arg):
-        prev_player_actions = copy.deepcopy(prev_player_actions_arg)
-        if self.contextual:
-            prev_player_actions = self.contextual_game.actions_base_game(prev_player_actions)
-        low_sig = self.game.val_low_val_sig()
-        high_sig = self.game.val_high_val_sig()
-        is_high_val_buyer = self.game.is_high_value_buyer(prev_player_actions)
-        if not is_high_val_buyer:
-            return low_sig
-        # return(high_sig)
-        if np.any(self.num_each_action == 0):
-            return high_sig
-        avg_per_action = np.divide(self.price_per_action, self.num_each_action)
-        if np.any(np.abs(np.diff(avg_per_action)) > self.tol):
-            elements = [low_sig, high_sig]
-            eq_strat = self.game.eq_strat_high_value_buyer()
-            choice = random.choices(elements, [eq_strat, 1.0 - eq_strat])
-            return int(choice[0])
-
-        return high_sig
-
-    def reward_and_update(self, player_actions_arg):
-        player_actions = copy.deepcopy(player_actions_arg)
-        if self.contextual:
-            player_actions = self.contextual_game.actions_base_game(player_actions)
-        int_ind = self.interaction_ind
-        rewards = self.game.rewards_from_actions(player_actions)
-        action = player_actions[int_ind]
-        price = self.game.v_high
-        if self.game.is_low_price(player_actions):
-            price = self.game.v_low
-        self.num_each_action[action] += 1
-        self.price_per_action[action] += price
-        return rewards
-
-# Dynamic for the buyer in the price-discrimination game where the buyer views fraction of rounds with price discrimination
-# to be the probability of a price-discriminating seller. Buyer then place SPBNE equilibrium strategy of the game
-# with pd and non-pd type sellers
-class estimateProbPDSeller(PlayerDynamic):
-    def __init__(self, g, i, p, tol=1, is_contextual=True):
-        super().__init__(g, i, p)
-        self.tol = tol
-        self.price_per_action = np.zeros(self.num_actions)
-        self.num_each_action = np.zeros(self.num_actions)
-        self.contextual = is_contextual
-        self.contextual_game = None
-        self.num_pd = 0
-        self.tot_rounds = 1
-        if is_contextual:
-            self.game = g.base_game
-            self.contextual_game = g
-
-    def next_action(self, prev_player_actions_arg):
-        prev_player_actions = copy.deepcopy(prev_player_actions_arg)
-        prev_player_actions = self.contextual_game.actions_base_game(prev_player_actions)
-        low_sig = self.game.val_low_val_sig()
-        high_sig = self.game.val_high_val_sig()
-        is_high_val_buyer = self.game.is_high_value_buyer(prev_player_actions)
-        if not is_high_val_buyer:
-            return low_sig
-        alpha_hat = self.num_pd / self.num_rounds
-        v_low = self.game.v_low
-        v_high = self.game.v_high
-        delta_v = v_high - v_low
-        cost = self.game.cost_evade
-        if (alpha_hat * delta_v) <= cost:
-            return high_sig
-
-        elements = [low_sig, high_sig]
-        eq_strat = self.game.eq_strat_high_value_buyer()
-        choice = random.choices(elements, [eq_strat, 1.0 - eq_strat])
-        return int(choice[0])
-
-    def reward_and_update(self, player_actions_arg):
-        player_actions = copy.deepcopy(player_actions_arg)
-        if self.contextual:
-            player_actions = self.contextual_game.actions_base_game(player_actions)
-        rewards = self.game.rewards_from_actions(player_actions)
-
-        self.num_rounds += 1
-        if player_actions_arg[2] == 1 or player_actions_arg[2] == 2:
-            self.num_pd += 1
-
-        return rewards
-
-
-# Strategy for deciding to buy where the buyer always buys when the price is not greater than the buyer's value
-class alwaysBuyWhenAffordable(PlayerDynamic):
-    def __init__(self, g, i, p, is_contextual=False):
-        super().__init__(g, i, p)
-        self.contextual = is_contextual
-        self.contextual_game = None
-        self.is_contextual = is_contextual
-        if is_contextual:
-            self.game = g.base_game
-            self.contextual_game = g
-
-    def next_action(self, prev_player_actions):
-        if self.is_contextual:
-            if self.game.is_high_value_buyer(prev_player_actions):
-                return 0
-            return 1
-        val = self.game.v_low
-        if self.is_contextual:
-            prev_player_actions = self.contextual_game.actions_base_game(prev_player_actions)
-        if self.game.is_high_value_buyer(prev_player_actions):
-            val = self.game.v_high
-        price = self.game.v_high
-        if self.game.is_low_price(prev_player_actions):
-            price = self.game.v_low
-
-        if val < price:
-            return 1
-        return 0
-
+    return (cumulative_average)

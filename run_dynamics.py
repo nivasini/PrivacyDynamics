@@ -1,240 +1,437 @@
 from dynamics import *
 import statistics
-
-
-# Returns the cumulative average of a list
-def cumulative_average(l):
-    cumulative_sum = 0
-    cumulative_count = 0
-    cumulative_avg = []
-
-    for num in l:
-        cumulative_sum += num
-        cumulative_count += 1
-        cumulative_avg.append(cumulative_sum / cumulative_count)
-
-    return cumulative_avg
-
+import seaborn as sns
+import pdb
+import os
+import os.path
 
 # Initialize an instance of the price discrimination game dynamics game
 # pr_high,v_high,c_low,cost_evade are parameters for the price discrimination game
 # dynamics_name: list of names of classes for dynamics in each interaction of the game
-# extra_args: extra_args[i] is the list of extra arguments to be passed to initialize an 
+# player_args: player_args[i] is the list of extra arguments to be passed to initialize an 
 #	object of class dynamics_names[i]
-def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args, T=10000,
-                               contexts=None):
-    price_disc_game = PriceDiscriminationGame(pr_high, v_high, v_low, cost_evade)
-    if contexts is not None:
-        price_disc_game = GameWithContextualActions(price_disc_game, contexts)
+def create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T,
+                               strategies=None, num_dynamics=None, player_args=None, contexts=None):
+    price_disc_game = PriceDiscriminationGame(pr_high, v_high, v_low, cost_evade, n, T)
+
     ind_nature = 0
     ind_buyer = 0
     ind_seller = 0
     num_interactions = 0
-    if contexts is not None:
-        ind_buyer = price_disc_game.base_game.reward_ind_buyer()
-        ind_seller = price_disc_game.base_game.reward_ind_seller()
-        num_interactions = price_disc_game.base_game.num_interactions()
-    else:
-        ind_buyer = price_disc_game.reward_ind_buyer()
-        ind_seller = price_disc_game.reward_ind_seller()
-        num_interactions = price_disc_game.num_interactions()
+    
+    ind_buyer = price_disc_game.reward_ind_buyer()
+    ind_seller = price_disc_game.reward_ind_seller()
+    num_interactions = price_disc_game.num_interactions()
     inds = [ind_nature, ind_buyer, ind_seller, ind_buyer]
 
     dynamics = []
-    for i in range(num_interactions):
-        class_name = globals()[dynamics_names[i]]
-        ind = inds[i]
-        arg = [price_disc_game, i, ind] + extra_args[i]
-        dynamics.append(class_name(*arg))
+    if strategies:
+        for interaction_ind in range(num_interactions):
+            class_name = globals()[dynamics_names[interaction_ind]]
+            player_ind = inds[interaction_ind]
+            args = ([price_disc_game, interaction_ind, player_ind] + 
+                    [strategies[interaction_ind]] + 
+                    [num_dynamics[interaction_ind]] + 
+                    [player_args[interaction_ind]] +
+                    [contexts[interaction_ind]])
+            dynamics.append(class_name(*args))
 
     return GameDynamics(price_disc_game, dynamics)
 
+'''
+Plotting Functions
+'''
 
-# Takes rewards in each round of game run for each player
-# and optionally the dynamics object
-# Plots the cumulative average rewards over time
-# optionally indicates the equilibrium or without price discrimination utilities
-def plot_cum_buyer_seller_utilities(r, d=None):
-    num_runs = len(r)
-    s = []
-    b = []
-    for i in range(num_runs):
-        b.append(cumulative_average(r[i][1]))
-        s.append(cumulative_average(r[i][2]))
-    hlines = None
-    if d is not None:
-        rows = 2
-        cols = num_runs
+# Code for Figure 1 (ordering of buyer/seller utilities in one-shot game)
+def plot_order_of_utilities():
+    fig,axs = plt.subplots(1, 2, figsize=(10, 3))
+    
+    alphas = np.linspace(0, 1, 10000)
+    
+    states = ['$\\theta_l \\geq \\mu\\theta_h$', '$\\theta_l < \\mu\\theta_h$']
+    params = [{'v_high': 10, 'cost_evade': 2.5}, {'v_high': 15, 'cost_evade': 5}]
+    
+    for i,state in enumerate(states):
+        v_high = params[i]['v_high']
+        cost_evade = params[i]['cost_evade']
+        game = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T).game
+        seller_utilities = [game.eq_utility('Seller', alpha) for alpha in alphas]
+        buyer_utilities = [game.eq_utility('High Value Buyer', alpha) for alpha in alphas]
+        
+        alpha_discontinuity = np.where(np.diff(seller_utilities) < 0)[0].item()
+        sns.lineplot(x=alphas,y=buyer_utilities, label='high value buyer',
+                     ax=axs[i], color=muted_palette[0])
+        sns.lineplot(x=alphas[0:alpha_discontinuity+1],
+                     y=seller_utilities[0:alpha_discontinuity+1],
+                     label='seller', ax=axs[i], color=muted_palette[1])
+        sns.lineplot(x=alphas[alpha_discontinuity+1:],
+                     y=seller_utilities[alpha_discontinuity+1:], ax=axs[i],
+                     color=muted_palette[1])
 
-        hlines = [[] for _ in range(rows)]
-        for i in range(rows):
-            hlines[i] = [[] for _ in range(cols)]
+    for ax in axs:
+        ax.set(xticks=np.linspace(0, 1, 3), xticklabels=[0, '$\\alpha^*$', 1])
+        ax.tick_params(axis='both', labelsize=axis_fs)
+        ax.set_xlabel('$\\alpha$', fontsize=label_fs)
+        ax.set_ylabel('Utility', fontsize=label_fs)
+        ax.legend(fontsize=legend_fs)
 
-        game = d.game
-        if game.is_contextual:
-            game = game.base_game
-        s_h = [game.eq_utility_seller(), game.utility_without_pd_seller()]
-        b_h = [game.eq_utility_buyer(), game.utility_without_pd_buyer()]
-
-        # s_h = [d.game.utility_without_pd_seller()]
-        # b_h = [d.game.utility_without_pd_buyer()]
-
-        for j in range(cols):
-            hlines[1][j] = s_h
-            hlines[0][j] = b_h
-    print(len(b), len(b[0]))
-    plot_matrix_subplots([b, s], hlines, None, ['Buyer', 'Seller'])
-
-
-# Creates a matrix of subplots. The (i,j)th subplot plots
-# a[i][j] against range(len(a[i][j]))
-def plot_matrix_subplots(a, hlines=None, vlines=None, row_labels=None, col_labels=None, subtitles=None):
-    rows = len(a)
-    cols = len(a[0])
-    total_plots = rows * cols
-    print(rows, cols)
-
-    # Calculate the optimal number of rows and columns
-    # max_dim = math.ceil(math.sqrt(total_plots))
-    # rows = min(max_dim, rows)
-    # cols = min(max_dim, math.ceil(total_plots / rows))
-
-    # Calculate the figure size based on the number of rows and columns
-    fig_width = 3 * cols
-    fig_height = 3 * rows
-
-    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(fig_width, fig_height), squeeze=False)
-
-    for i in range(rows):
-        for j in range(cols):
-            ax = axes[i, j]
-            ax.plot(range(len(a[i][j])), a[i][j])
-            if hlines is not None:
-                for hline in hlines[i][j]:
-                    ax.axhline(hline, color='red', linestyle='--')
-            if i == 0 and (col_labels is not None):
-                ax.set_title(col_labels[j])
-            if j == 0 and (row_labels is not None):
-                ax.set_ylabel(row_labels[i])
-            if (subtitles is not None):
-                ax.set_title(subtitles[i][j])
-
-    plt.tight_layout()
+    axs[0].legend(loc=(0.5, 0.5), fontsize=legend_fs)
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path+'order_of_utilities.pdf')
     plt.show()
 
-
-# Takes actions in each round of game run for each player
-# Plots the average frequency of each action profile over time
-def plot_actions_frequency(actions):
-    T = len(actions)
-
-    def tuple_to_index(i, j, k):
-        return (i + 2 * j + 4 * k)
-
-    counts = np.zeros((8, T))
-
+# Computes frequencies of seller's actions over time horizon
+def generate_seller_action_frequencies(actions, dynamic_type, j):
+    action_types = ['high price', 'low price', 'PD', 'revPD']
+    counts = np.zeros((len(action_types), T))
+            
     for t in range(T):
-        a = actions[t]
-        for i in range(2):
-            for j in range(2):
-                for k in range(2):
-                    if a[0] == i and a[1] == j and a[2] == k:
-                        counts[tuple_to_index(i, j, k)][t] += 1
+        if t % 1000==0:
+            print('t',t)
+        if all(x==1 for x in actions[t][2]):
+            counts[0][t] = counts[0][t-1] + 1 if t > 0 else 1 
+            counts[0][t+1:] = [counts[0][t] for _ in range(T-(t+1))]
+        elif all(x==0 for x in actions[t][2]):
+            counts[1][t] = counts[1][t-1] + 1 if t > 0 else 1 
+            counts[1][t+1:] = [counts[1][t] for _ in range(T-(t+1))]
+        elif all(x==1 for x in [price + signal for (price, signal) in zip(actions[t][2], actions[t][1])]):
+            counts[2][t] = counts[2][t-1] + 1 if t > 0 else 1 
+            counts[2][t+1:] = [counts[2][t] for _ in range(T-(t+1))]
+        elif all(x % 2 == 0 for x in [price + signal for (price, signal) in zip(actions[t][2], actions[t][1])]):
+            counts[3][t] = counts[3][t-1] + 1 if t > 0 else 1 
+            counts[3][t+1:] = [counts[3][t] for _ in range(T-(t+1))]
+    
+    frequencies = np.divide(counts, np.arange(1,T+1))
 
-    subplots = [[], []]
-    hlines = [[], []]
-    titles = [[], []]
-    for i in range(2):
-        for j in range(2):
-            for k in range(2):
-                p = cumulative_average(counts[tuple_to_index(i, j, k)].tolist())
-                subplots[i].append(cumulative_average(counts[tuple_to_index(i, j, k)].tolist()))
-                hlines[i].append([statistics.mean(p[-50:])])
-                s_i = 'high val'
-                s_j = 'high sig'
-                s_k = 'low price'
-                if i == 1:
-                    s_i = 'low val'
-                if j == 1:
-                    s_j = 'low sig'
-                if k == 1:
-                    s_k = 'high price'
-                t = s_i + ',' + s_j + ',' + s_k
-                titles[i].append(t)
-                print(t, statistics.mean(p[-50:]))
+    return frequencies, action_types
 
-    plot_matrix_subplots(subplots, hlines, None, None, None, titles)
+# Code for Figure 4 -- plots frequencies of seller's actions over time horizon
+def plot_seller_action_frequencies(actions):
+    print('plotting seller action frequencies')
+    fig, axs = plt.subplots(1, len(price_strat_labels), figsize=(15, 5))
+    labels = ['high price', 'low price', 'PD', 'reversePD']
+    for i, dynamic_type in enumerate(price_strat_labels):
+        print(dynamic_type)
+        ax=axs[i]
+        frequencies, action_types = generate_seller_action_frequencies(actions[i], dynamic_type, i)
+        for j in range(len(frequencies)):
+            sns.lineplot(x=np.arange(T), y=frequencies[j], color=muted_palette[j], label=labels[j], ax=ax)
+        ax.set_xlabel('t', fontsize=label_fs)
+        ax.set_ylabel('Action Frequency', fontsize=label_fs)
+        ax.set_title(f'{price_strat_labels[i]}', fontsize=label_fs)
+        ax.tick_params(axis='both', labelsize=16)
+        ax.legend(fontsize=legend_fs)
+    
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path + 'action_frequencies.pdf')
+    plt.show()
 
+# Code for Figure 2 -- plots buyer/seller utilities for a seller playing various algorithms against a CBER buyer 
+def plot_utilities(rewards, dynamics):
+    print('plotting utilities')
+    players = {0:'Seller', 1:'Buyer'}
+    alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
+    fig, axs = plt.subplots(nrows=1, ncols=len(players), figsize=(15, 5))
+    utility_color_idxs = [0, 2, 3]
+    equil_color_idxs = [1, 4, 7]
+    game = dynamics[0].game
+    for j in range(len(players)):
+        player_idx = 1 if players[j] == 'Buyer' else 2
+        for i in range(np.shape(rewards)[0]):
+            sns.lineplot(x=np.arange(T),
+                         y=cumulative_average(rewards[i][player_idx]),
+                         ax=axs[j], color=muted_palette[utility_color_idxs[i]],
+                         label=price_strat_labels[i])
 
-def plot_contextual_actions_frequency(actions):
-    T = len(actions[0])
-    counts = np.zeros((4, T))
+        for i, alpha in enumerate(alpha_levels):
+            label = f'($\\alpha$={alpha})-PD equil.' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD equil.'
+            axs[j].hlines(y=game.eq_utility(players[j], alpha), xmin=0, xmax=T, linestyles='dashed', 
+                          label=label, color=muted_palette[equil_color_idxs[i]])
 
-    for t in range(T):
-        a = actions[0][t]
-        counts[a[2]][t] += 1
+        axs[j].set_xlabel('t', fontsize=label_fs)
+        axs[j].set_ylabel('Utility', fontsize=label_fs)
+        axs[j].tick_params(axis='both', labelsize=axis_fs)
+        axs[j].set_title(players[j], fontsize=label_fs)
 
-    subplots = [[]]
-    hlines = [[]]
-    titles = [['always low price', 'high sig: low price, low_sig: high price',
-               'high sig: high price, low_sig: low price', 'always high price']]
-    for i in range(4):
-        p = cumulative_average(counts[i].tolist())
-        subplots[0].append(p)
-        hlines[0].append([statistics.mean(p[-50:])])
+    axs[0].legend(ncols=2, fontsize=legend_fs)
+    axs[1].legend(ncols=2, fontsize=legend_fs)
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path + 'utilities.pdf')
+    plt.show()
 
-    plot_matrix_subplots(subplots, hlines, None, None, None, titles)
+def plot_flip_effect():
+    print('plotting bias effects')
+    flip_probs = np.arange(0, 1, 0.1)
+    fig, axs = plt.subplots(nrows=1, ncols=len(price_strat_labels), figsize=(15, 5))
+    for i,label in enumerate(price_strat_labels):
+        print(label)
+        conv_seller_utility = []
+        conv_buyer_utility = []
+        for pr_flip in flip_probs:
+            print('flip prob', pr_flip)
+            r = create_dynamics(i, pr_flip=pr_flip, bias_bounds=[0,0])[0]
+            conv_seller_utility.append(cumulative_average(r[2])[-1])
+            conv_buyer_utility.append(cumulative_average(r[1])[-1])
+            
+        sns.lineplot(x=flip_probs, y=conv_seller_utility, ax=axs[i],
+                     label='seller', color=muted_palette[0])
+        sns.lineplot(x=flip_probs, y=conv_buyer_utility, ax=axs[i],
+                     label='buyer', color=muted_palette[1])
+        
+        axs[i].set_xlabel('flip probability')
+        axs[i].set_ylabel('Cumulative Average Utility')
+        axs[i].set_title(label)
+        axs[i].legend()
+    
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path + 'flip_effect.pdf')
+    plt.show()
 
+def plot_utilities_per_bias_interval(bias_interval):
+    players = {0:'seller', 1:'buyer'}
+    alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
+    bias_bounds = np.arange(-1, 1, bias_interval)
+    colors = [muted_palette[i] for i in [0, 1, 2, 4]]
+    game = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T).game
+    fig = plt.figure(layout='constrained', figsize=(15, 5 * len(bias_bounds)))
+    subfigs = fig.subfigures(len(bias_bounds), 1)
 
-def main():
+    for i, bias_bound in enumerate(bias_bounds):
+        print('bias bound', bias_bound)
+        axs = subfigs[i].subplots(len(players), len(price_strat_labels), sharey=True)
+        subfigs[i].suptitle(f'bias interval = {[bias_bounds[i], bias_bounds[i] + bias_interval]}')
+        subfigs[i].set_facecolor('0.75')
+        rewards = []
+        for j, label in enumerate(price_strat_labels):
+            print(label)
+            r = create_dynamics(j, pr_flip=0, bias_bounds=[bias_bounds[i], bias_bounds[i] + bias_interval])[0]
+            rewards.append(r)
+        for j, label in enumerate(price_strat_labels):
+            utilities = []
+            seller_utilities = cumulative_average(rewards[j][2])
+            buyer_utilities = cumulative_average(rewards[j][1])
+            utilities.append(seller_utilities)
+            utilities.append(buyer_utilities)
+            for k in range(len(players)):
+                sns.lineplot(x=np.arange(T), y=utilities[k], ax=axs[k][j], color=colors[0], label='Repeated PD')
+                for idx, alpha in enumerate(alpha_levels):
+                    label = f'($\\alpha$={alpha})-PD' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD'
+                    axs[k][j].hlines(y=game.eq_utility(players[k],alpha),xmin=0,xmax=T,linestyles='dashed',label=label,color=colors[idx+1])
+                if k==0:
+                    axs[k][j].set_title(f'{price_strat_labels[j]} {players[k]}', fontsize=8)
+                else:
+                    axs[k][j].set_title(f'CBER {players[k]}', fontsize=8)
+                axs[k][j].set_xlabel('t')
+                axs[k][j].set_ylabel('utility')
+                axs[k][j].legend()
+
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.subplots_adjust(left=0.125, bottom=0.1, right=0.9, top=0.9, wspace=0.2, hspace=0.2)
+    plt.savefig(path+f'utilities_per_bias_interval.pdf')
+    plt.show()
+
+def plot_cumulative_avg_utility_per_bias_interval(bias_interval):
+    print('plotting bias intervals')
+    players = {0:'Seller', 1:'Buyer'}
+    alpha_levels = [0, 1, cost_evade / (v_high - v_low)]
+    bias_bounds = np.arange(-1, 1, bias_interval)
+    fig, ax = plt.subplots()
+    utility_color_idxs = [0, 2, 3]
+    equil_color_idxs = [1, 4, 7]
+    for i, label in enumerate(price_strat_labels):
+        print(label)
+        conv_seller_utility = []
+        conv_buyer_utility = []
+        for bias_bound in bias_bounds:
+            print('bias bounds', [bias_bound, bias_bound + bias_interval])
+            r = create_dynamics(i, pr_flip=0, bias_bounds=[bias_bound, bias_bound + bias_interval])[0]
+            conv_seller_utility.append(cumulative_average(r[2])[-1])
+            conv_buyer_utility.append(cumulative_average(r[1])[-1])
+        sns.lineplot(x=bias_bounds, y=conv_seller_utility,
+                     color=muted_palette[utility_color_idxs[i]], label=label)
+
+    game = create_dynamics(0, pr_flip=0, bias_bounds=[])[-1].game
+    for i, alpha in enumerate(alpha_levels):
+        legend_label = f'($\\alpha$={alpha})-PD equil.' if alpha in [0, 1] else f'($\\alpha$=$\\alpha^*$)-PD equil.'
+        ax.hlines(y=game.eq_utility(players[0], alpha), xmin=-1, xmax=1,
+                      linestyles='dashed', label=legend_label,
+                      color=muted_palette[equil_color_idxs[i]])
+            
+    ax.set_xlabel('Estimator Bias Level', fontsize=label_fs)
+    ax.set_ylabel('Seller\'s Cumulative \n Average Utility', fontsize=label_fs)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.legend(ncols=2, fontsize=legend_fs)
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path + 'cumulative_avg_utility_per_bias_interval.pdf')
+    plt.show()
+
+# Code for Figure 3 -- plots convergence of CBER's estimator over rounds
+def plot_alphas_vs_alpha_hats(alphas, alpha_hats):
+    print('plotting alpha hats')
+    alpha_hats = np.squeeze(alpha_hats)
+    fig, ax = plt.subplots(1, 1)
+    color_idxs = [0, 2, 3]
+    for i, label in enumerate(price_strat_labels):
+        sns.lineplot(x=np.arange(T), y=alpha_hats[i],
+                     color=pastel_palette[color_idxs[i]], label=f'{label} '+'$\\hat{\\alpha}_t$')
+        sns.lineplot(x=np.arange(T), y=cumulative_average(alphas[i]), 
+                     color=dark_palette[color_idxs[i]], label=f'{label} '+ '$\\overline{\\alpha_t}$', linestyle='--')
+
+    ax.legend(fontsize=legend_fs)
+    ax.set_xlabel('t', fontsize=label_fs)
+    ax.set_ylabel('$\\hat{\\alpha}_t$ and  $\\overline{\\alpha_t}$', fontsize=label_fs)
+    ax.tick_params(axis='both', labelsize=axis_fs)
+    fig.suptitle('CBER buyer', fontsize=label_fs)
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path + 'alpha_hats_vs_alphas.pdf')
+    plt.show()
+
+def plot_regret(actions, seller_dynamics):
+    print('plotting regret')
+    avg_regret = seller_dynamics.avg_regret(actions)
+    fig, ax = plt.subplots()
+    sns.lineplot(x=range(avg_regret.shape[0]), y=avg_regret, color=muted_palette[0])
+    ax.set_xlabel('t')
+    ax.set_ylabel('Average Regret of Exp3')
+    fig.autofmt_xdate()
+    sns.despine()
+    fig.tight_layout()
+    plt.savefig(path + 'regret.pdf')
+    plt.show()
+
+# Runs Repeated PD protocol
+def create_dynamics(price_strat_idx, **kwargs):
+    
+    price_strat = price_strat_args[price_strat_idx]
+    if 'pr_flip' in kwargs:
+        pr_flip = kwargs['pr_flip']
+    if 'bias_bounds' in kwargs:
+        bias_bounds = kwargs['bias_bounds']
+
+    strategies = [nature_strat, signal_strat, price_strat['strat_name'], buy_strat]
+    num_dynamics = [1, num_estimators, price_strat['num_dynamics'], 1]
+    player_args = [None,
+                   {'num_estimators': num_estimators,
+                    'pr_estimators': pr_estimators,
+                    'pr_flip': pr_flip,
+                    'bias_bounds': bias_bounds},
+                   price_strat['player_args'],
+                   None]
+
+    contexts = [{'inds': None, 'function': None},
+                {'inds': None, 'function': 'self._assign_estimators'},
+                {'inds': price_strat['contexts']['inds'], 'function': price_strat['contexts']['function']},
+                {'inds': None, 'function': None}]
+    
+    repeated_pd = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, n, T, 
+                                             strategies, num_dynamics, player_args, contexts)
+    r, a, a_hats, true_as = repeated_pd.run(price_strat_labels[price_strat_idx])
+    return r, a, a_hats, true_as, repeated_pd
+
+def create_all_dynamics():
+    all_rewards = []
+    all_actions = []
+    all_alpha_hats = []
+    all_alphas = []
+    all_dynamics = []
+    for i in range(len(price_strat_args)):
+        print(price_strat_labels[i])
+        rewards, actions, alpha_hats, alphas, repeated_pd = create_dynamics(i, pr_flip=0, bias_bounds=[0,0])
+        all_rewards.append(rewards)
+        all_actions.append(actions)
+        all_alpha_hats.append(alpha_hats)
+        all_alphas.append(alphas)
+        all_dynamics.append(repeated_pd)
+    return all_rewards, all_actions, all_alpha_hats, all_alphas, all_dynamics
+
+# Generates all plots
+def generate_plots():
+
+    plot_order_of_utilities()
+    plot_cumulative_avg_utility_per_bias_interval(bias_interval=0.1) 
+    
+    all_rewards, all_actions, all_alpha_hats, all_alphas, all_dynamics = create_all_dynamics()
+    plot_utilities(all_rewards, all_dynamics)
+    plot_alphas_vs_alpha_hats(all_alphas, all_alpha_hats)
+    plot_seller_action_frequencies(all_actions)
+
+    # Extra plots
+    #plot_regret(all_actions[0], all_dynamics[0].dynamics[2])
+    #plot_utilities_per_bias_interval(bias_interval=0.1)
+    #plot_flip_effect()
+
+if __name__=='__main__':
+    # Fix randomness
+    seed = 1
+    np.random.seed(seed)
+    random.seed(seed)
+    
+    # Parameters 
     pr_high = 0.5
     v_low = 5
     v_high = 15
+    pr_flip = 0
     cost_evade = 5
-
-    # For without signal usage, set is_contextual = False
-    is_contextual = True
-
-    # dynamics_names = ['randomStrategy', 'checkForSignalsUsage', 'EXP3_IX', 'alwaysBuyWhenAffordable']
-    dynamics_names = ['randomStrategy', 'estimateProbPDSeller', 'EXP3_IX', 'alwaysBuyWhenAffordable']
-    extra_args = [[[pr_high, 1 - pr_high]], [1.0, is_contextual], [], [is_contextual]]
-    contexts = [[], [], [1], [2]]
-    if not is_contextual:
-        contexts = None
-
-    T = 2000000
-    # T = 200000
-    price_disc_dynamics = create_price_disc_instance(pr_high, v_high, v_low, cost_evade, dynamics_names, extra_args, T,
-                                                     contexts)
+    n = 10
+    epsilon = 0.01
+    alpha = cost_evade / (v_high - v_low) - epsilon
+    num_estimators = 1
+    pr_estimators = [1, 0]
+    T = 20000
     num_runs = 1
-    rewards = []
 
-    actions = []
-    for i in range(num_runs):
-        a, r = price_disc_dynamics.run(T)
-        rewards.append(r)
-        actions.append(a)
+    # Player Dynamics
+    nature_dynamic = 'natureDynamic'
+    signal_dynamic = 'signalDynamic'
+    price_dynamic = 'priceDynamic'
+    buy_dynamic = 'buyDynamic'
+    dynamics_names = [nature_dynamic, signal_dynamic, price_dynamic, buy_dynamic]
 
-    # To plot running average of rewards for each run
-    plot_cum_buyer_seller_utilities(rewards, price_disc_dynamics)
+    # Player Strategies
+    nature_strat = 'randomSelection'
+    signal_strat = 'consistentEstimate'
+    price_strat = ['Exp3', 'alphaPD']
+    buy_strat = 'buyUnderValue'
 
-    # To plot frequencies of action profiles for each run
-    plot_contextual_actions_frequency(actions[-10000:])
-
-    # To plot regret of the first run
-    seller_dynamic = price_disc_dynamics.dynamics[2]
-    avg_reg = seller_dynamic.avg_regret(actions[0])
-    plt.plot(range(avg_reg.shape[0]), avg_reg)
-    plt.show()
-
-    # Plotting regret of never price discriminating
-    # This corresponds to action 3
-    actions_non_pd = actions[0]
-    for i in range(len(a[0])):
-        actions_non_pd[i][2] = 3
-    avg_reg_non_pd = seller_dynamic.avg_regret(actions_non_pd)
-    plt.plot(range(avg_reg_non_pd.shape[0]), avg_reg_non_pd)
-    plt.show()
-
-
-main()
+    # Experiment Settings
+    # strategy -- num_dynamics -- player args -- contexts
+    price_strat_args = [{'strat_name': 'Exp3',
+                         'num_dynamics': 1,
+                         'player_args': None, 
+                         'contexts': {'inds': [None], 'function': None}},
+                         {'strat_name': 'Exp3',
+                          'num_dynamics': 2,
+                          'player_args': None,
+                          'contexts': {'inds': [1], 'function':
+                                       'self._assign_dynamics'}},
+                         {'strat_name': 'alphaPD',
+                          'num_dynamics': 1,
+                          'player_args': {'alpha': alpha},
+                          'contexts': {'inds': [None], 'function': None}}]
+   
+    # Plot Settings
+    price_strat_labels = ['Exp3', 'CExp3', '$\\alpha^*$-PD']
+    path = '/Users/marielwerner/desktop/PrivacyPlots/'
+    data_path =  os.getcwd() + '/data/'
+    label_fs = 18
+    axis_fs = 18
+    legend_fs = 12
+    muted_palette = sns.color_palette('muted')
+    dark_palette = sns.color_palette('dark')
+    pastel_palette = sns.color_palette('pastel')
+    
+    generate_plots()
+    
